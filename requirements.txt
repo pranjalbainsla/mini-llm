@@ -1,0 +1,4 @@
+torch>=2.7
+numpy>=2.0
+onnx>=1.18
+netron>=8.6
