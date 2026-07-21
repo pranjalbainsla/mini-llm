@@ -15,6 +15,12 @@ n_layer = 4
 num_experts = 4
 dropout = 0.0
 
+# Architecture
+attention = "mha"      # mha, gqa, mla
+ffn = "moe"            # mlp, moe, swiglu
+norm = "layernorm"     # layernorm, rmsnorm
+position = "rope"      # rope, learned, alibi
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 torch.manual_seed(1337)
