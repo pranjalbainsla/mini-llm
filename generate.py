@@ -1,10 +1,9 @@
 import torch
-
 from config import device
 from model.gpt import GPT
-from data.dataset import decode
+from data.dataset import decode, vocab_size
 
-model = GPT().to(device)
+model = GPT(vocab_size=vocab_size).to(device)
 model.load_state_dict(torch.load("gpt_moe.pth", map_location=device))
 model.eval()
 
