@@ -4,6 +4,7 @@ import torch.nn as nn
 from model.ffn.mlp import FeedForward
 from model.ffn.moe import MoE
 from model.attention.mha import MultiHeadAttention
+from model.norm.rmsnorm import RMSNorm
 
 
 def build_ffn():
@@ -38,7 +39,7 @@ def build_norm():
     if norm == "layernorm":
         return nn.LayerNorm(n_embd)
 
-    # elif norm == "rmsnorm":
-    #     return RMSNorm(n_embd)
+    elif norm == "rmsnorm":
+        return RMSNorm(n_embd)
 
     raise ValueError(f"Unknown Norm: {norm}")
