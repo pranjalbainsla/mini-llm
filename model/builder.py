@@ -1,4 +1,5 @@
 from config import *
+from model.ffn.swiglu import SwiGLU
 import torch.nn as nn
 from model.ffn.mlp import FeedForward
 from model.ffn.moe import MoE
@@ -11,6 +12,10 @@ def build_ffn():
 
     elif ffn == "moe":
         return MoE(n_embd, num_experts)
+    
+    elif ffn == "swiglu":
+        hidden_dim = int(8 * n_embd / 3)
+        return SwiGLU(n_embd, hidden_dim)
 
     else:
         raise ValueError(f"Unknown FFN: {ffn}")

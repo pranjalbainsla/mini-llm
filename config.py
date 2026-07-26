@@ -1,5 +1,8 @@
 import torch
 
+# Dataset
+dataset_path = "data/input.txt"
+
 # training
 batch_size = 16
 block_size = 32
@@ -17,7 +20,7 @@ dropout = 0.0
 
 # Architecture
 attention = "mha"      # mha, gqa, mla
-ffn = "moe"            # mlp, moe, swiglu
+ffn = "swiglu"            # mlp, moe, swiglu
 norm = "layernorm"     # layernorm, rmsnorm
 position = "rope"      # rope, learned, alibi
 
