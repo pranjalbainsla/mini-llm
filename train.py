@@ -1,6 +1,13 @@
-from config import *
+import torch
+from config import (
+    learning_rate,
+    max_iters,
+    device,
+    eval_interval,
+    eval_iters,
+)
 from model.gpt import GPT
-from data.dataset import *
+from data.dataset import vocab_size, get_batch
 
 model = GPT(vocab_size=vocab_size).to(device)
 
@@ -36,4 +43,10 @@ for iter in range(max_iters):
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
     optimizer.step()
+
+# Serialize the model's state_dict (parameter-name -> tensor mapping). Unlike saving the
+# entire model, this avoids pickling the class definition, making checkpoints smaller,
+# more portable, and resilient to project refactors. Reload by instantiating the same
+# architecture and calling model.load_state_dict(torch.load(...)).
+torch.save(model.state_dict(), "gpt_moe.pth")
 
