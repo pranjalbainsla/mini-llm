@@ -8,13 +8,12 @@ from config import (
     block_size,
     device,
 )
-from data.dataset import vocab_size
 from .block import Block
 from .attention.rope import precompute_freqs
 
 class GPT(nn.Module):
 
-    def __init__(self):
+    def __init__(self, vocab_size):
         super().__init__()
         self.cos, self.sin = precompute_freqs(n_embd // n_head, block_size, device)
         # each token directly reads off the logits for the next token from a lookup table
