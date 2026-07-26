@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from rope import apply_rope
+from .rope import apply_rope
 from config import (
     n_embd,
     block_size,
