@@ -3,7 +3,7 @@ import torch.nn as nn
 from config import (
     dropout,
 )
-class FeedFoward(nn.Module):
+class FeedForward(nn.Module):
     """ a simple linear layer followed by a non-linearity """
 
     def __init__(self, n_embd):
