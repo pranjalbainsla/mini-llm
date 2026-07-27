@@ -16,11 +16,12 @@ n_embd = 64
 n_head = 4
 n_layer = 4
 num_experts = 4
+k = 2
 dropout = 0.0
 
 # Architecture
 attention = "mha"      # mha, gqa, mla
-ffn = "swiglu"            # mlp, moe, swiglu
+ffn = "moe"            # mlp, moe, swiglu
 norm = "rmsnorm"     # layernorm, rmsnorm
 position = "rope"      # rope, learned, alibi
 

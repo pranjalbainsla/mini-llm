@@ -9,5 +9,6 @@ data/input.txt
 checkpoints/
 onnx/
 *.onnx
+notes.txt
 
 .DS_Store

@@ -12,7 +12,7 @@ def build_ffn():
         return FeedForward(n_embd)
 
     elif ffn == "moe":
-        return MoE(n_embd, num_experts)
+        return MoE(n_embd, num_experts, k)
     
     elif ffn == "swiglu":
         hidden_dim = int(8 * n_embd / 3)
