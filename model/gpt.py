@@ -42,7 +42,7 @@ class GPT(nn.Module):
         logits = self.lm_head(x) # (B,T,vocab_size)
 
         if targets is None:
-            loss = None
+            total_loss = None
         else:
             B, T, C = logits.shape
             logits = logits.view(B*T, C)
