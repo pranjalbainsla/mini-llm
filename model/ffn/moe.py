@@ -33,6 +33,7 @@ class MoE(nn.Module):
         # expert_idx = self.router(tokens).argmax(dim=-1) # (B*T, 1) ? no it's (B*T,) 
 
         expert_weights, expert_indices = self.router(tokens).topk(self.k, dim=-1) # (B*T, k)
+        # softmax for weights
 
         out = torch.zeros_like(tokens)
 

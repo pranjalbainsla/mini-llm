@@ -6,7 +6,7 @@ from config import (
 from data.dataset import vocab_size
 from model.gpt import GPT
 
-model = GPT().to(device)
+model = GPT(vocab_size=vocab_size).to(device)
 
 dummy = torch.randint(0, vocab_size, (1, block_size))
 
