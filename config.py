@@ -18,6 +18,7 @@ n_layer = 4
 num_experts = 4
 k = 2
 dropout = 0.0
+alpha = 0.001
 
 # Architecture
 attention = "mha"      # mha, gqa, mla

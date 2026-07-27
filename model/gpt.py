@@ -7,6 +7,7 @@ from config import (
     n_layer,
     block_size,
     device,
+    alpha
 )
 from .block import Block
 from .attention.rope import precompute_freqs
@@ -33,8 +34,10 @@ class GPT(nn.Module):
         # x = tok_emb + pos_emb # (B,T,C)
         x = tok_emb
         #x = self.blocks(x) # (B,T,C)
+        total_aux = 0
         for block in self.blocks:
-          x = block(x, cos, sin)
+          x, aux = block(x, cos, sin)
+          total_aux += aux
         x = self.ln_f(x) # (B,T,C)
         logits = self.lm_head(x) # (B,T,vocab_size)
 
@@ -44,9 +47,14 @@ class GPT(nn.Module):
             B, T, C = logits.shape
             logits = logits.view(B*T, C)
             targets = targets.view(B*T)
-            loss = F.cross_entropy(logits, targets)
+            ce_loss = F.cross_entropy(logits, targets)
 
-        return logits, loss
+            total_loss = ce_loss
+
+            if total_aux is not None:
+                total_loss = ce_loss + alpha * total_aux
+
+        return logits, total_loss
 
     def generate(self, idx, max_new_tokens):
         # idx is (B, T) array of indices in the current context

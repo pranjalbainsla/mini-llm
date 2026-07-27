@@ -20,5 +20,7 @@ class Block(nn.Module):
 
     def forward(self, x, cos, sin):
         x = x + self.attn(self.ln1(x), cos, sin)
-        x = x + self.ffn(self.ln2(x))
-        return x
+        ffn_out, aux_loss = self.ffn(self.ln2(x))
+        x = x + ffn_out
+
+        return x, aux_loss
