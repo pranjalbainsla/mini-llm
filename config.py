@@ -21,7 +21,7 @@ dropout = 0.0
 alpha = 0.001
 
 # Architecture
-attention = "mha"      # mha, gqa, mla
+attention = "mha_optimized"      # mha, gqa, mla
 ffn = "moe"            # mlp, moe, swiglu
 norm = "rmsnorm"     # layernorm, rmsnorm
 position = "rope"      # rope, learned, alibi

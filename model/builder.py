@@ -1,4 +1,5 @@
 from config import *
+from model.attention.mha_optimized import MultiHeadAttentionOptimized
 from model.ffn.swiglu import SwiGLU
 import torch.nn as nn
 from model.ffn.mlp import FeedForward
@@ -25,6 +26,9 @@ def build_attention():
 
     if attention == "mha":
         return MultiHeadAttention(n_head, n_embd // n_head) # head_size = n_embd // n_head
+    
+    elif attention == "mha_optimized":
+        return MultiHeadAttentionOptimized(n_embd, n_head)
 
     # elif attention == "gqa":
     #     return GroupedQueryAttention(...)
