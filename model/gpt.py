@@ -26,8 +26,8 @@ class GPT(nn.Module):
 
     def forward(self, idx, targets=None):
         B, T = idx.shape
-        cos = self.cos[:T].unsqueeze(0)   # (1, T, n_embd/2)
-        sin = self.sin[:T].unsqueeze(0)
+        cos = self.cos[:T]  # (T, n_embd/2)
+        sin = self.sin[:T]
         # idx and targets are both (B,T) tensor of integers
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
         # pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)

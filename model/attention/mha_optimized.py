@@ -41,8 +41,8 @@ class MultiHeadAttentionOptimized(nn.Module):
         V = V.transpose(1, 2)
 
         # apply RoPE
-        cos = cos[:T].unsqueeze(0).unsqueeze(0)  # (1, 1, T, D/2)
-        sin = sin[:T].unsqueeze(0).unsqueeze(0)  # (1, 1, T, D/2)
+        cos = cos.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin = sin.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
         Q = apply_rope(Q, cos, sin)
         K = apply_rope(K, cos, sin)
 

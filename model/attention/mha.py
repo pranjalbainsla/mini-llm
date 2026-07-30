@@ -11,11 +11,11 @@ from config import (
 class Head(nn.Module):
     """ one head of self-attention """
 
-    def __init__(self, head_size):
+    def __init__(self, head_dim):
         super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
+        self.key = nn.Linear(n_embd, head_dim, bias=False)
+        self.query = nn.Linear(n_embd, head_dim, bias=False)
+        self.value = nn.Linear(n_embd, head_dim, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
         self.dropout = nn.Dropout(dropout)
 
@@ -23,7 +23,8 @@ class Head(nn.Module):
         B,T,C = x.shape
         k = self.key(x)   # (B,T,C)
         q = self.query(x) # (B,T,C)
-
+        cos = cos.unsqueeze(0) # (1, T, head_dim/2)
+        sin = sin.unsqueeze(0)
         q = apply_rope(q, cos, sin)
         k = apply_rope(k, cos, sin)
         # compute attention scores ("affinities")
