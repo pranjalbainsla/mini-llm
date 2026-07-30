@@ -5,6 +5,7 @@ import torch.nn as nn
 from model.ffn.mlp import FeedForward
 from model.ffn.moe import MoE
 from model.attention.mha import MultiHeadAttention
+from model.attention.gqa import GroupedQueryAttention
 from model.norm.rmsnorm import RMSNorm
 
 
@@ -30,8 +31,8 @@ def build_attention():
     elif attention == "mha_optimized":
         return MultiHeadAttentionOptimized(n_embd, n_head)
 
-    # elif attention == "gqa":
-    #     return GroupedQueryAttention(...)
+    elif attention == "gqa":
+        return GroupedQueryAttention(n_embd, n_head)
 
     # elif attention == "mla":
     #     return MLA(...)
