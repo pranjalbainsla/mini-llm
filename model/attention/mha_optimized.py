@@ -54,7 +54,8 @@ class MultiHeadAttentionOptimized(nn.Module):
         Q = apply_rope(Q, cos, sin)
         K = apply_rope(K, cos, sin)
 
-        self.cache_pos += T
+        if use_cache:
+            self.cache_pos += T
 
         if use_cache:
             if self.k_cache is None:
@@ -74,6 +75,15 @@ class MultiHeadAttentionOptimized(nn.Module):
             wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)
         wei = self.dropout(wei)
+        # debug shape error
+        print("T:", T)
+        print("cache_pos:", self.cache_pos)
+        print("Q:", Q.shape)
+        print("K:", K.shape)
+        print("V:", V.shape)
+        print("k_cache:", None if self.k_cache is None else self.k_cache.shape)
+        print("v_cache:", None if self.v_cache is None else self.v_cache.shape)
+        print("wei:", wei.shape)
         # perform the weighted aggregation of the values
         out = wei @ V # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
 
