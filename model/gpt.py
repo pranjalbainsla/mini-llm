@@ -24,10 +24,8 @@ class GPT(nn.Module):
         self.ln_f = nn.LayerNorm(n_embd) # final layer norm
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None, use_cache=False):
         B, T = idx.shape
-        cos = self.cos[:T]  # (T, n_embd/2)
-        sin = self.sin[:T]
         # idx and targets are both (B,T) tensor of integers
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
         # pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
@@ -36,7 +34,7 @@ class GPT(nn.Module):
         #x = self.blocks(x) # (B,T,C)
         total_aux = 0
         for block in self.blocks:
-          x, aux = block(x, cos, sin)
+          x, aux = block(x, self.cos, self.sin, use_cache)
           total_aux += aux
         x = self.ln_f(x) # (B,T,C)
         logits = self.lm_head(x) # (B,T,vocab_size)
@@ -60,20 +58,42 @@ class GPT(nn.Module):
         for block in self.blocks:
             block.attn.reset_cache()  
 
+    # generation before kv cache
+    # def generate(self, idx, max_new_tokens):
+    #     # idx is (B, T) array of indices in the current context 
+    #     for _ in range(max_new_tokens):
+    #         # crop idx to the last block_size tokens
+    #         idx_cond = idx[:, -block_size:]
+    #         # get the predictions
+    #         logits, loss = self(idx_cond)
+    #         # focus only on the last time step
+    #         logits = logits[:, -1, :] # becomes (B, C)
+    #         # apply softmax to get probabilities
+    #         probs = F.softmax(logits, dim=-1) # (B, C)
+    #         # sample from the distribution
+    #         idx_next = torch.multinomial(probs, num_samples=1) # (B, 1)
+    #         # append sampled index to the running sequence
+    #         idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
+    #     return idx
+
     def generate(self, idx, max_new_tokens):
-        # idx is (B, T) array of indices in the current context 
+        # idx: (B, T_prompt)
         self.reset_cache()
+
+        # Prefill: process the entire prompt once and populate the KV cache
+        logits, _ = self(idx, use_cache=True)
+
+        # Decode (T = 1 each iteration)
         for _ in range(max_new_tokens):
-            # crop idx to the last block_size tokens
-            idx_cond = idx[:, -block_size:]
-            # get the predictions
-            logits, loss = self(idx_cond, use_cache=True)
-            # focus only on the last time step
-            logits = logits[:, -1, :] # becomes (B, C)
-            # apply softmax to get probabilities
-            probs = F.softmax(logits, dim=-1) # (B, C)
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1) # (B, 1)
-            # append sampled index to the running sequence
-            idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
+            # Use the last token's logits to sample the next token
+            logits = logits[:, -1, :]          # (B, vocab_size)
+            probs = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+
+            # Append to the generated sequence
+            idx = torch.cat((idx, idx_next), dim=1)
+
+            # Feed ONLY the new token; K/V for previous tokens are already cached
+            logits, _ = self(idx_next, use_cache=True)
+
         return idx

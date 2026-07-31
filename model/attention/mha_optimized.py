@@ -16,6 +16,7 @@ class MultiHeadAttentionOptimized(nn.Module):
         self.head_dim = n_embd // n_head
         self.k_cache = None
         self.v_cache = None
+        self.cache_pos = 0
         self.q_proj = nn.Linear(n_embd, n_embd)
         self.k_proj = nn.Linear(n_embd, n_embd)
         self.v_proj = nn.Linear(n_embd, n_embd)
@@ -26,6 +27,11 @@ class MultiHeadAttentionOptimized(nn.Module):
     def forward(self, x, cos, sin, use_cache=False):
         B, T, C = x.shape
         n, head_dim = self.n_head, self.head_dim
+        if use_cache:
+            start = self.cache_pos
+        else:
+            start = 0
+        end = start + T
 
         # (B, T, C)
         Q = self.q_proj(x)
@@ -43,10 +49,12 @@ class MultiHeadAttentionOptimized(nn.Module):
         V = V.transpose(1, 2)
 
         # apply RoPE
-        cos = cos.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        sin = sin.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        cos = cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin = sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
         Q = apply_rope(Q, cos, sin)
         K = apply_rope(K, cos, sin)
+
+        self.cache_pos += T
 
         if use_cache:
             if self.k_cache is None:
@@ -61,9 +69,9 @@ class MultiHeadAttentionOptimized(nn.Module):
             K = self.k_cache
             V = self.v_cache
         wei = Q @ K.transpose(-2,-1) / math.sqrt(head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-        if not use_cache:
-            # don't need mask for generation 
-            wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, H, T, T)
+        if not use_cache or T>1:
+            # don't need mask for generation (generating one token at a time)
+            wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)
         wei = self.dropout(wei)
         # perform the weighted aggregation of the values
@@ -80,3 +88,4 @@ class MultiHeadAttentionOptimized(nn.Module):
     def reset_cache(self):
         self.v_cache = None
         self.k_cache = None
+        self.cache_pos = 0
