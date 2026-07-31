@@ -18,8 +18,8 @@ class Block(nn.Module):
         self.ln1 = build_norm()
         self.ln2 = build_norm()
 
-    def forward(self, x, cos, sin):
-        x = x + self.attn(self.ln1(x), cos, sin)
+    def forward(self, x, cos, sin, use_cache):
+        x = x + self.attn(self.ln1(x), cos, sin, use_cache)
         ffn_out, aux_loss = self.ffn(self.ln2(x))
         x = x + ffn_out
 
