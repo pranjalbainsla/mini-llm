@@ -14,6 +14,8 @@ class MultiHeadAttentionOptimized(nn.Module):
         assert n_embd % n_head == 0
         self.n_head = n_head
         self.head_dim = n_embd // n_head
+        self.k_cache = None
+        self.v_cache = None
         self.q_proj = nn.Linear(n_embd, n_embd)
         self.k_proj = nn.Linear(n_embd, n_embd)
         self.v_proj = nn.Linear(n_embd, n_embd)
@@ -21,7 +23,7 @@ class MultiHeadAttentionOptimized(nn.Module):
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, cos, sin):
+    def forward(self, x, cos, sin, use_cache=False):
         B, T, C = x.shape
         n, head_dim = self.n_head, self.head_dim
 
@@ -46,9 +48,22 @@ class MultiHeadAttentionOptimized(nn.Module):
         Q = apply_rope(Q, cos, sin)
         K = apply_rope(K, cos, sin)
 
+        if use_cache:
+            if self.k_cache is None:
+                self.k_cache = K
+                self.v_cache = V
+            else:
+                self.k_cache = torch.cat([self.k_cache, K], dim=2)
+                self.v_cache = torch.cat([self.v_cache, V], dim=2)
+        
         # attention
+        if use_cache:
+            K = self.k_cache
+            V = self.v_cache
         wei = Q @ K.transpose(-2,-1) / math.sqrt(head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, H, T, T)
+        if not use_cache:
+            # don't need mask for generation 
+            wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, H, T, T)
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)
         wei = self.dropout(wei)
         # perform the weighted aggregation of the values
@@ -61,3 +76,7 @@ class MultiHeadAttentionOptimized(nn.Module):
         out = self.dropout(out)
 
         return out
+    
+    def reset_cache(self):
+        self.v_cache = None
+        self.k_cache = None
