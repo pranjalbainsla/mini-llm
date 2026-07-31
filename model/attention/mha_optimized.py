@@ -76,14 +76,15 @@ class MultiHeadAttentionOptimized(nn.Module):
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)
         wei = self.dropout(wei)
         # debug shape error
-        print("T:", T)
-        print("cache_pos:", self.cache_pos)
-        print("Q:", Q.shape)
-        print("K:", K.shape)
-        print("V:", V.shape)
-        print("k_cache:", None if self.k_cache is None else self.k_cache.shape)
-        print("v_cache:", None if self.v_cache is None else self.v_cache.shape)
-        print("wei:", wei.shape)
+        if use_cache:
+            print("T:", T)
+            print("cache_pos:", self.cache_pos)
+            print("Q:", Q.shape)
+            print("K:", K.shape)
+            print("V:", V.shape)
+            print("k_cache:", None if self.k_cache is None else self.k_cache.shape)
+            print("v_cache:", None if self.v_cache is None else self.v_cache.shape)
+            print("wei:", wei.shape)
         # perform the weighted aggregation of the values
         out = wei @ V # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
 
