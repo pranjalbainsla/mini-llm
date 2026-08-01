@@ -28,25 +28,34 @@ def estimate_loss():
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-for iter in range(max_iters):
+try:
+    best_val_loss = float("inf")
 
-    # every once in a while evaluate the loss on train and val sets
-    if iter % eval_interval == 0 or iter == max_iters - 1:
-        losses = estimate_loss()
-        print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+    for iter in range(max_iters):
 
-    # sample a batch of data
-    xb, yb = get_batch('train')
+        # every once in a while evaluate the loss on train and val sets
+        if iter % eval_interval == 0 or iter == max_iters - 1:
+            losses = estimate_loss()
+            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 
-    # evaluate the loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
+            # Save best checkpoint for inference
+            if losses["val"] < best_val_loss:
+                best_val_loss = losses["val"]
+                torch.save(model.state_dict(), "gpt.pth")
+                print(f"Saved new best model (val={best_val_loss:.4f})")
 
-# Serialize the model's state_dict (parameter-name -> tensor mapping). Unlike saving the
-# entire model, this avoids pickling the class definition, making checkpoints smaller,
-# more portable, and resilient to project refactors. Reload by instantiating the same
-# architecture and calling model.load_state_dict(torch.load(...)).
-torch.save(model.state_dict(), "gpt_moe.pth")
+        # sample a batch of data
+        xb, yb = get_batch('train')
+
+        # evaluate the loss
+        logits, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+finally:
+    # Serialize the model's state_dict (parameter-name -> tensor mapping). Unlike saving the
+    # entire model, this avoids pickling the class definition, making checkpoints smaller,
+    # more portable, and resilient to project refactors. Reload by instantiating the same
+    # architecture and calling model.load_state_dict(torch.load(...)).
+    torch.save(model.state_dict(), "gpt_latest.pth")
 
