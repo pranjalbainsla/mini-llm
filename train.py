@@ -1,3 +1,4 @@
+import stringprep
 import torch
 from config import (
     learning_rate,
@@ -28,27 +29,27 @@ def estimate_loss():
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 best_val_loss = float("inf")
-start_iter = 0
+start_step = 0
 
 try:
     ckpt = torch.load("latest_checkpoint.pt", map_location=device)
     model.load_state_dict(ckpt["model"])
     optimizer.load_state_dict(ckpt["optimizer"])
-    start_iter = ckpt["iter"] + 1
+    start_step = ckpt["step"] + 1
     best_val_loss = ckpt["best_val_loss"]
-    print(f"Resuming from step {start_iter}")
+    print(f"Resuming from step {start_step}")
 except FileNotFoundError:
     print("No checkpoint found. Starting from scratch.")
 
-iter = start_iter
+step = start_step
 
 try:
-    for iter in range(start_iter, max_iters):
+    for step in range(start_step, max_iters):
 
         # every once in a while evaluate the loss on train and val sets
-        if iter % eval_interval == 0 or iter == max_iters - 1:
+        if step % eval_interval == 0 or step == max_iters - 1:
             losses = estimate_loss()
-            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+            print(f"step {step}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 
             # Save best checkpoint for inference
             if losses["val"] < best_val_loss:
@@ -57,7 +58,7 @@ try:
                 torch.save({
                     "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
-                    "iter": iter,
+                    "step": step,
                     "best_val_loss": best_val_loss
                 }, "best_checkpoint.pt")
                 print(f"Saved new best model (val={best_val_loss:.4f})")
@@ -79,7 +80,7 @@ finally:
     torch.save({
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
-        "iter": iter,
+        "step": step,
         "best_val_loss": best_val_loss
     }, "latest_checkpoint.pt")
 
