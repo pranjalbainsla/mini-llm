@@ -1,5 +1,6 @@
 from config import *
 from model.attention.mha_optimized import MultiHeadAttentionOptimized
+from model.attention.mla import MultiheadLatentAttention
 from model.ffn.swiglu import SwiGLU
 import torch.nn as nn
 from model.ffn.mlp import FeedForward
@@ -34,8 +35,8 @@ def build_attention():
     elif attention == "gqa":
         return GroupedQueryAttention(n_embd, n_head, n_kv_heads)
 
-    # elif attention == "mla":
-    #     return MLA(...)
+    elif attention == "mla":
+        return MultiheadLatentAttention(n_embd, n_head, latent_dim)
 
     raise ValueError(f"Unknown Attention: {attention}")
 

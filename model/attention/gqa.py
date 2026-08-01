@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .rope import apply_rope
 from config import (
-    block_size,
-    dropout
+    dropout,
+    max_seq_len
 )
 
 class GroupedQueryAttention(nn.Module):
@@ -23,7 +23,7 @@ class GroupedQueryAttention(nn.Module):
         self.q_proj = nn.Linear(n_embd, n_embd)
         self.k_proj = nn.Linear(n_embd, n_kv_heads * self.head_dim)
         self.v_proj = nn.Linear(n_embd, n_kv_heads * self.head_dim)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        self.register_buffer('tril', torch.tril(torch.ones(max_seq_len, max_seq_len)))
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 

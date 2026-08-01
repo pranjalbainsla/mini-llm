@@ -20,6 +20,7 @@ k = 2
 dropout = 0.0
 alpha = 0.001
 n_kv_heads = 2
+latent_dim = 32
 
 # inference
 max_seq_len = 4096

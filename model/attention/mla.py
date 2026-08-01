@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .rope import apply_rope
 from config import (
-    block_size,
-    dropout
+    dropout,
+    max_seq_len
 )
 
 class MultiheadLatentAttention(nn.Module):
@@ -16,7 +16,6 @@ class MultiheadLatentAttention(nn.Module):
         self.head_dim = n_embd // n_head
         self.kv_cache = None
         self.cache_pos = 0
-        # need W_down (to convert x to latent, aka compression), Wk_up (latent to K), Wv_up (latent to V)
         self.down = nn.Linear(
             n_embd,
             latent_dim,
@@ -30,9 +29,7 @@ class MultiheadLatentAttention(nn.Module):
             n_head * self.head_dim,
         )
         self.q_proj = nn.Linear(n_embd, n_embd)
-        # self.k_proj = nn.Linear(n_embd, n_embd)
-        # self.v_proj = nn.Linear(n_embd, n_embd)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        self.register_buffer('tril', torch.tril(torch.ones(max_seq_len, max_seq_len)))
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
@@ -54,7 +51,7 @@ class MultiheadLatentAttention(nn.Module):
             K = self.up_k(latent)
             V = self.up_v(latent)
         
-        L = K.size(1) # T during training
+        L = K.size(1)
 
         Q = Q.view(B, T, n, head_dim) # (B, T, n_head, head_dim)
         K = K.view(B, L, n, head_dim) # (B, L, n_head, head_dim)
@@ -70,8 +67,8 @@ class MultiheadLatentAttention(nn.Module):
         else:
             start = 0
         end = start + T
-        cos_q = cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, L, head_dim/2)
-        sin_q = sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, L, head_dim/2)
+        cos_q = cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin_q = sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
         Q = apply_rope(Q, cos_q, sin_q)
 
         cos_k = cos[:L].unsqueeze(0).unsqueeze(0)
