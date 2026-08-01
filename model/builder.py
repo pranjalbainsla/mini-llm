@@ -32,7 +32,7 @@ def build_attention():
         return MultiHeadAttentionOptimized(n_embd, n_head)
 
     elif attention == "gqa":
-        return GroupedQueryAttention(n_embd, n_head)
+        return GroupedQueryAttention(n_embd, n_head, n_kv_heads)
 
     # elif attention == "mla":
     #     return MLA(...)
