@@ -4,7 +4,8 @@ from model.gpt import GPT
 from data.dataset import decode, vocab_size
 
 model = GPT(vocab_size=vocab_size).to(device)
-model.load_state_dict(torch.load("best_checkpoint.pt", map_location=device))
+ckpt = torch.load("best_checkpoint.pt", map_location=device)
+model.load_state_dict(ckpt["model"])
 model.eval()
 
 if __name__ == "__main__":
