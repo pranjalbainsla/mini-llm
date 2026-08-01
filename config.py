@@ -24,7 +24,7 @@ alpha = 0.001
 max_seq_len = 4096
 
 # Architecture
-attention = "mha_optimized"      # mha, gqa, mla
+attention = "gqa"      # mha, gqa, mla
 ffn = "moe"            # mlp, moe, swiglu
 norm = "rmsnorm"     # layernorm, rmsnorm
 position = "rope"      # rope, learned, alibi
