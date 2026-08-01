@@ -7,7 +7,8 @@ from config import (
     n_layer,
     block_size,
     device,
-    alpha
+    alpha,
+    max_seq_len
 )
 from .block import Block
 from .attention.rope import precompute_freqs
@@ -16,7 +17,7 @@ class GPT(nn.Module):
 
     def __init__(self, vocab_size):
         super().__init__()
-        self.cos, self.sin = precompute_freqs(n_embd // n_head, block_size, device)
+        self.cos, self.sin = precompute_freqs(n_embd // n_head, max_seq_len, device)
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         # self.position_embedding_table = nn.Embedding(block_size, n_embd)

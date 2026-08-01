@@ -20,6 +20,9 @@ k = 2
 dropout = 0.0
 alpha = 0.001
 
+# inference
+max_seq_len = 4096
+
 # Architecture
 attention = "mha_optimized"      # mha, gqa, mla
 ffn = "moe"            # mlp, moe, swiglu

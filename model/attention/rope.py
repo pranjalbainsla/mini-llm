@@ -6,7 +6,7 @@ def precompute_freqs(head_size, max_seq_len, device):
     )
     positions = torch.arange(max_seq_len, device=device) # max_seq_len == block_size == T
     freqs = torch.outer(positions, theta)
-    cos = freqs.cos()
+    cos = freqs.cos() # T, d/2
     sin = freqs.sin()
     return cos, sin
   
