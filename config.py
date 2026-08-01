@@ -26,7 +26,7 @@ latent_dim = 32
 max_seq_len = 4096
 
 # Architecture
-attention = "gqa"      # mha, gqa, mla
+attention = "mla"      # mha, gqa, mla
 ffn = "moe"            # mlp, moe, swiglu
 norm = "rmsnorm"     # layernorm, rmsnorm
 position = "rope"      # rope, learned, alibi
