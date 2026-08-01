@@ -28,6 +28,7 @@ def estimate_loss():
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 best_val_loss = float("inf")
+start_iter = 0
 
 try:
     ckpt = torch.load("latest_checkpoint.pt", map_location=device)
@@ -35,7 +36,13 @@ try:
     optimizer.load_state_dict(ckpt["optimizer"])
     start_iter = ckpt["iter"] + 1
     best_val_loss = ckpt["best_val_loss"]
+    print(f"Resuming from step {start_iter}")
+except FileNotFoundError:
+    print("No checkpoint found. Starting from scratch.")
 
+iter = start_iter
+
+try:
     for iter in range(start_iter, max_iters):
 
         # every once in a while evaluate the loss on train and val sets
