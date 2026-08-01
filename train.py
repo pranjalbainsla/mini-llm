@@ -27,11 +27,16 @@ def estimate_loss():
 
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+best_val_loss = float("inf")
 
 try:
-    best_val_loss = float("inf")
+    ckpt = torch.load("latest_checkpoint.pt", map_location=device)
+    model.load_state_dict(ckpt["model"])
+    optimizer.load_state_dict(ckpt["optimizer"])
+    start_iter = ckpt["iter"] + 1
+    best_val_loss = ckpt["best_val_loss"]
 
-    for iter in range(max_iters):
+    for iter in range(start_iter, max_iters):
 
         # every once in a while evaluate the loss on train and val sets
         if iter % eval_interval == 0 or iter == max_iters - 1:
@@ -41,7 +46,13 @@ try:
             # Save best checkpoint for inference
             if losses["val"] < best_val_loss:
                 best_val_loss = losses["val"]
-                torch.save(model.state_dict(), "gpt.pth")
+                # torch.save(model.state_dict(), "gpt.pth")
+                torch.save({
+                    "model": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "iter": iter,
+                    "best_val_loss": best_val_loss
+                }, "best_checkpoint.pt")
                 print(f"Saved new best model (val={best_val_loss:.4f})")
 
         # sample a batch of data
@@ -57,5 +68,11 @@ finally:
     # entire model, this avoids pickling the class definition, making checkpoints smaller,
     # more portable, and resilient to project refactors. Reload by instantiating the same
     # architecture and calling model.load_state_dict(torch.load(...)).
-    torch.save(model.state_dict(), "gpt_latest.pth")
+    # torch.save(model.state_dict(), "gpt_latest.pth")
+    torch.save({
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "iter": iter,
+        "best_val_loss": best_val_loss
+    }, "latest_checkpoint.pt")
 
