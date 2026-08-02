@@ -24,7 +24,7 @@ class MultiHeadAttentionOptimized(nn.Module):
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, cos, sin, use_cache=False):
+    def forward(self, x, cos, sin, use_cache):
         B, T, C = x.shape
         n, head_dim = self.n_head, self.head_dim
         if use_cache:
@@ -61,6 +61,12 @@ class MultiHeadAttentionOptimized(nn.Module):
             else:
                 self.k_cache = torch.cat([self.k_cache, K], dim=2)
                 self.v_cache = torch.cat([self.v_cache, V], dim=2)
+                # Keep only the last block_size tokens.
+                # The model was trained with a context window of block_size, so letting the
+                # cache grow beyond this hurts generation quality.
+                if self.k_cache.size(2) > block_size:
+                    self.k_cache = self.k_cache[:, :, -block_size:, :]
+                    self.v_cache = self.v_cache[:, :, -block_size:, :]
         if use_cache:
             self.cache_pos += T
         

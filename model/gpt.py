@@ -77,12 +77,12 @@ class GPT(nn.Module):
     #         idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
     #     return idx
 
-    def generate(self, idx, max_new_tokens):
+    def generate(self, idx, max_new_tokens, use_cache):
         # idx: (B, T_prompt)
         self.reset_cache()
 
         # Prefill: process the entire prompt once and populate the KV cache
-        logits, _ = self(idx, use_cache=False)
+        logits, _ = self(idx, use_cache=use_cache)
 
         # Decode (T = 1 each iteration)
         for _ in range(max_new_tokens):
@@ -95,6 +95,6 @@ class GPT(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
             # Feed ONLY the new token; K/V for previous tokens are already cached
-            logits, _ = self(idx_next, use_cache=False)
+            logits, _ = self(idx_next, use_cache=use_cache)
 
         return idx
