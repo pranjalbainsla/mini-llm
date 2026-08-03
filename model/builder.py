@@ -1,8 +1,9 @@
+import torch.nn as nn
 from config import *
 from model.attention.mha_optimized import MultiHeadAttentionOptimized
 from model.attention.mla_deepseek import MultiheadLatentAttentionDeepSeek
+from model.ffn.moe_deepseek import MoEDeepSeek
 from model.ffn.swiglu import SwiGLU
-import torch.nn as nn
 from model.ffn.mlp import FeedForward
 from model.ffn.moe import MoE
 from model.attention.mha import MultiHeadAttention
@@ -17,6 +18,9 @@ def build_ffn():
     elif ffn == "moe":
         return MoE(n_embd, num_experts, k)
     
+    elif ffn == "moe_deepseek":
+        return MoEDeepSeek(n_embd, num_experts, num_shared_experts, k)
+    
     elif ffn == "swiglu":
         hidden_dim = int(8 * n_embd / 3)
         return SwiGLU(n_embd, hidden_dim)
@@ -27,7 +31,7 @@ def build_ffn():
 def build_attention():
 
     if attention == "mha":
-        return MultiHeadAttention(n_head, n_embd // n_head) # head_size = n_embd // n_head
+        return MultiHeadAttention(n_head, n_embd // n_head)
     
     elif attention == "mha_optimized":
         return MultiHeadAttentionOptimized(n_embd, n_head)
@@ -37,7 +41,6 @@ def build_attention():
 
     elif attention == "mla_deepseek":
         return MultiheadLatentAttentionDeepSeek(n_embd, n_head, latent_kv_dim, latent_q_dim)
-
 
     raise ValueError(f"Unknown Attention: {attention}")
 

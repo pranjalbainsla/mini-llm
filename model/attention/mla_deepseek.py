@@ -15,7 +15,7 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         super().__init__()
         assert n_embd % n_head == 0
         self.n_head = n_head
-        self.dh = n_embd // n_head # 16
+        self.dh = n_embd // n_head 
         self.dh_non_rotary = 3 * self.dh // 4
         self.dh_rotary = self.dh - self.dh_non_rotary
         cos, sin = precompute_freqs(self.dh_rotary, max_seq_len, device)
@@ -27,7 +27,7 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.cache_pos = 0
 
         self.down_proj_kv = nn.Linear(n_embd, latent_kv_dim)
-        self.up_k = nn.Linear(latent_kv_dim, n_head * self.dh_non_rotary) # (48, dc) @ (dc, 1)
+        self.up_k = nn.Linear(latent_kv_dim, n_head * self.dh_non_rotary) 
         self.k_rotary = nn.Linear(n_embd, self.dh_rotary) # During attention you'll broadcast this same rotary key to every head.
 
         self.up_v = nn.Linear(latent_kv_dim, n_head * self.dh)
