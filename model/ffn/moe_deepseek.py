@@ -13,15 +13,20 @@ class Expert(nn.Module):
             nn.Linear(4 * n_embd, n_embd),
             nn.Dropout(dropout),
         )
-        
+
     def forward(self, x):
         return self.net(x)
   
 class MoEDeepSeek(nn.Module):
     """ Adds always-active shared experts alongside routed experts """
 
-    def __init__(self, n_embd, num_experts, num_shared_experts, k):
+    def __init__(self, n_embd, num_experts, num_shared_experts, k, bias_update_speed):
         super().__init__()
+        self.num_experts = num_experts
+        self.num_shared_experts = num_shared_experts
+        self.k = k
+        self.target_fraction = k / num_experts
+        self.bias_update_speed = bias_update_speed
         self.router = nn.Linear(n_embd, num_experts)
         self.experts = nn.ModuleList(
             [Expert(n_embd) for _ in range(num_experts)]
@@ -29,20 +34,24 @@ class MoEDeepSeek(nn.Module):
         self.shared_experts = nn.ModuleList(
             [Expert(n_embd) for _ in range(num_shared_experts)]
         )
-        self.num_experts = num_experts
-        self.num_shared_experts = num_shared_experts
-        self.k = k
+        self.register_buffer("expert_bias", torch.zeros(num_experts))
 
     def forward(self, x):
         B, T, C = x.shape
         tokens = x.reshape(B * T, C)
         
         router_logits = self.router(tokens) # (B*T, num_experts)
-        # probs = F.softmax(router_logits, dim=-1)
         scores = torch.sigmoid(router_logits)
-        topk_scores, topk_idx = torch.topk(scores, self.k, dim=-1) # (B*T, k)
-        topk_probs = topk_scores / topk_scores.sum(dim=-1, keepdim=True)
 
+        # Bias only affects expert selection.
+        biased_scores = scores + self.expert_bias
+
+        _, topk_idx = torch.topk(biased_scores, self.k, dim=-1) # (B*T, k)
+
+        # Gating uses the original affinity scores.
+        gates = scores.gather(1, topk_idx)
+        gates /= gates.sum(dim=-1, keepdim=True)
+        
         routed_out = torch.zeros_like(tokens)
 
         for expert_id, expert in enumerate(self.experts):
@@ -54,7 +63,7 @@ class MoEDeepSeek(nn.Module):
 
             expert_input = tokens[token_idx]
             expert_output = expert(expert_input)
-            weights = topk_probs[token_idx, slot_idx].unsqueeze(-1)
+            weights = gates[token_idx, slot_idx].unsqueeze(-1)
 
             routed_out[token_idx] += weights * expert_output
         
@@ -64,11 +73,28 @@ class MoEDeepSeek(nn.Module):
 
         out = routed_out + shared_out
 
-        # Load balancing loss     
-        P = scores.mean(dim=0)
-        # P = probs.mean(dim=0)
-        mask = F.one_hot(topk_idx, num_classes=self.num_experts).float()
-        f = mask.sum(dim=1).float().mean(dim=0) / self.k
-        aux_loss = self.num_experts * (P * f).sum()
+        return out.reshape(B, T, C), topk_idx
+    
+    @torch.no_grad()
+    def update_expert_bias(self, topk_idx):
+        """
+        topk_idx: (num_tokens, k)
+        """
 
-        return out.reshape(B, T, C), aux_loss
+        # Count how many times each expert was selected.
+        expert_counts = torch.bincount(
+            topk_idx.reshape(-1),
+            minlength=self.num_experts
+        ).float()
+
+        # Fraction of routing decisions assigned to each expert.
+        expert_fraction = expert_counts / topk_idx.numel()
+
+        # Experts used too much -> decrease bias.
+        overused = expert_fraction > self.target_fraction
+
+        # Experts used too little -> increase bias.
+        underused = expert_fraction < self.target_fraction
+
+        self.expert_bias[overused] -= self.bias_update_speed
+        self.expert_bias[underused] += self.bias_update_speed

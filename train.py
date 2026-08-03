@@ -1,4 +1,3 @@
-import stringprep
 import torch
 from config import (
     learning_rate,
@@ -67,10 +66,12 @@ try:
         xb, yb = get_batch('train')
 
         # evaluate the loss
-        logits, loss = model(xb, yb)
+        logits, loss, routing_info = model(xb, yb)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
+
+        model.update_expert_bias(routing_info)
 finally:
     # Serialize the model's state_dict (parameter-name -> tensor mapping). Unlike saving the
     # entire model, this avoids pickling the class definition, making checkpoints smaller,

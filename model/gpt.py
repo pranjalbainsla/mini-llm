@@ -5,13 +5,9 @@ from config import (
     n_embd,
     n_head,
     n_layer,
-    block_size,
-    device,
-    alpha,
-    max_seq_len
+    alpha
 )
 from .block import Block
-from .attention.rope import precompute_freqs
 
 class GPT(nn.Module):
 
@@ -31,11 +27,13 @@ class GPT(nn.Module):
         # pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
         # x = tok_emb + pos_emb # (B,T,C)
         x = tok_emb
-        #x = self.blocks(x) # (B,T,C)
+        # x = self.blocks(x) # (B,T,C)
         total_aux = 0
+        routing_info = []
         for block in self.blocks:
-          x, aux = block(x, use_cache)
-          total_aux += aux
+          x, topk_idx = block(x, use_cache)
+          routing_info.append(topk_idx)
+          # total_aux += aux
         x = self.ln_f(x) # (B,T,C)
         logits = self.lm_head(x) # (B,T,vocab_size)
 
@@ -52,7 +50,7 @@ class GPT(nn.Module):
             if total_aux is not None:
                 total_loss = ce_loss + alpha * total_aux
 
-        return logits, total_loss
+        return logits, total_loss, routing_info
     
     def reset_cache(self):
         for block in self.blocks:
@@ -97,3 +95,9 @@ class GPT(nn.Module):
             logits, _ = self(idx_next, use_cache=use_cache)
 
         return idx
+    
+    @torch.no_grad()
+    def update_expert_bias(self, routing_info):
+        for block, topk_idx in zip(self.blocks, routing_info):
+            if hasattr(block.ffwd, "update_expert_bias"):
+                block.ffwd.update_expert_bias(topk_idx)

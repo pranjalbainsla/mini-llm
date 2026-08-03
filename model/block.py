@@ -19,7 +19,9 @@ class Block(nn.Module):
 
     def forward(self, x, use_cache):
         x = x + self.attn(self.ln1(x), use_cache=use_cache)
-        ffn_out, aux_loss = self.ffn(self.ln2(x))
+        # ffn_out, aux_loss  = self.ffn(self.ln2(x))
+        ffn_out, topk_idx = self.ffn(self.ln2(x))
         x = x + ffn_out
 
-        return x, aux_loss
+        # return x, aux_loss
+        return x, topk_idx

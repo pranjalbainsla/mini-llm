@@ -17,6 +17,7 @@ n_head = 4
 n_layer = 4
 num_experts = 4
 num_shared_experts = 2 # DeepSeek V3 uses 1
+gamma = 0.001 # bias update speed 
 k = 2
 dropout = 0.0
 alpha = 0.001
