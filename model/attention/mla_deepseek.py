@@ -1,10 +1,11 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
-from .rope import apply_rope
+from .rope import apply_rope, precompute_freqs
 from config import (
     dropout,
-    max_seq_len
+    max_seq_len,
+    device
 )
 
 class MultiheadLatentAttentionDeepSeek(nn.Module):
@@ -16,6 +17,9 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.dh = n_embd // n_head # 16
         self.dh_non_rotary = 3 * self.dh // 4
         self.dh_rotary = self.dh - self.dh_non_rotary
+        cos, sin = precompute_freqs(self.dh_rotary, max_seq_len, device)
+        self.register_buffer("cos", cos)
+        self.register_buffer("sin", sin)
 
         self.kv_cache = None
         self.kr_cache = None
@@ -35,7 +39,7 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, x, cos, sin, use_cache=False):
+    def forward(self, x, use_cache=False):
         B, T, C = x.shape
         n, dh, dh_nr = self.n_head, self.dh, self.dh_non_rotary
 
@@ -63,8 +67,8 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
             KR = self.kr_cache
 
         # apply RoPE
-        cos_k = cos[:L].unsqueeze(0)
-        sin_k = sin[:L].unsqueeze(0)
+        cos_k = self.cos[:L].unsqueeze(0) # (1, L, d/2)
+        sin_k = self.sin[:L].unsqueeze(0) # (1, L, d/2)
         KR = apply_rope(KR, cos_k, sin_k)
         KR = KR.unsqueeze(2)   # (B, L, 1, dh_rotary)
         KR = KR.expand(-1, -1, self.n_head, -1) # (B, L, n_head, dh_rotary)
@@ -79,8 +83,8 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         else:
             start = 0
         end = start + T
-        cos_q = cos[start:end].unsqueeze(0)  # (1, T, head_dim/2)
-        sin_q = sin[start:end].unsqueeze(0)  # (1, T, head_dim/2)
+        cos_q = self.cos[start:end].unsqueeze(0)  # (1, T, head_dim/2)
+        sin_q = self.sin[start:end].unsqueeze(0)  # (1, T, head_dim/2)
         QR = apply_rope(QR, cos_q, sin_q)
         QR = QR.view(B, T, n, dh - dh_nr)
         QC = QC.view(B, T, n, dh_nr)

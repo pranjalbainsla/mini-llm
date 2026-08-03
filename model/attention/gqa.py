@@ -1,11 +1,12 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
-from .rope import apply_rope
+from .rope import apply_rope, precompute_freqs
 from config import (
     dropout,
     max_seq_len,
-    block_size
+    block_size,
+    device
 )
 
 class GroupedQueryAttention(nn.Module):
@@ -18,9 +19,14 @@ class GroupedQueryAttention(nn.Module):
         self.head_dim = n_embd // n_head
         self.n_kv_heads = n_kv_heads
         self.repeat = n_head // n_kv_heads
+        cos, sin = precompute_freqs(self.head_dim, max_seq_len, device)
+        self.register_buffer("cos", cos)
+        self.register_buffer("sin", sin)
+
         self.k_cache = None
         self.v_cache = None
         self.cache_pos = 0
+
         self.q_proj = nn.Linear(n_embd, n_embd)
         self.k_proj = nn.Linear(n_embd, n_kv_heads * self.head_dim)
         self.v_proj = nn.Linear(n_embd, n_kv_heads * self.head_dim)
@@ -28,7 +34,7 @@ class GroupedQueryAttention(nn.Module):
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, cos, sin, use_cache):
+    def forward(self, x, use_cache):
         B, T, C = x.shape
         n, head_dim, n_kv_heads, repeat = self.n_head, self.head_dim, self.n_kv_heads, self.repeat
         if use_cache:
@@ -50,8 +56,8 @@ class GroupedQueryAttention(nn.Module):
         V = V.transpose(1, 2) # (B, n_kv_heads, T, head_dim)
 
         # apply RoPE
-        cos = cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        sin = sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        cos = self.cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin = self.sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
         Q = apply_rope(Q, cos, sin)
         K = apply_rope(K, cos, sin)
 

@@ -17,7 +17,6 @@ class GPT(nn.Module):
 
     def __init__(self, vocab_size):
         super().__init__()
-        self.cos, self.sin = precompute_freqs(n_embd // n_head, max_seq_len, device)
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         # self.position_embedding_table = nn.Embedding(block_size, n_embd)
@@ -35,7 +34,7 @@ class GPT(nn.Module):
         #x = self.blocks(x) # (B,T,C)
         total_aux = 0
         for block in self.blocks:
-          x, aux = block(x, self.cos, self.sin, use_cache)
+          x, aux = block(x, use_cache)
           total_aux += aux
         x = self.ln_f(x) # (B,T,C)
         logits = self.lm_head(x) # (B,T,vocab_size)

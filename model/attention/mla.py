@@ -1,10 +1,11 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
-from .rope import apply_rope
+from .rope import apply_rope, precompute_freqs
 from config import (
     dropout,
-    max_seq_len
+    max_seq_len,
+    device
 )
 
 class MultiheadLatentAttention(nn.Module):
@@ -16,6 +17,10 @@ class MultiheadLatentAttention(nn.Module):
         self.head_dim = n_embd // n_head
         self.kv_cache = None
         self.cache_pos = 0
+        cos, sin = precompute_freqs(self.head_dim, max_seq_len, device)
+        self.register_buffer("cos", cos)
+        self.register_buffer("sin", sin)
+
         self.down = nn.Linear(
             n_embd,
             latent_dim,
@@ -33,7 +38,7 @@ class MultiheadLatentAttention(nn.Module):
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, cos, sin, use_cache=False):
+    def forward(self, x, use_cache=False):
         B, T, C = x.shape
         n, head_dim = self.n_head, self.head_dim
 
@@ -67,12 +72,12 @@ class MultiheadLatentAttention(nn.Module):
         else:
             start = 0
         end = start + T
-        cos_q = cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        sin_q = sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        cos_q = self.cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin_q = self.sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
         Q = apply_rope(Q, cos_q, sin_q)
 
-        cos_k = cos[:L].unsqueeze(0).unsqueeze(0)
-        sin_k = sin[:L].unsqueeze(0).unsqueeze(0)
+        cos_k = self.cos[:L].unsqueeze(0).unsqueeze(0)
+        sin_k = self.sin[:L].unsqueeze(0).unsqueeze(0)
         K = apply_rope(K, cos_k, sin_k)
 
         if use_cache:

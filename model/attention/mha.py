@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .rope import apply_rope
+from .rope import apply_rope, precompute_freqs
 from config import (
     n_embd,
     block_size,
     dropout,
+    max_seq_len,
+    device
 )
 
 class Head(nn.Module):
@@ -42,11 +44,14 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(self, num_heads, head_size):
         super().__init__()
+        cos, sin = precompute_freqs(self.head_dim, max_seq_len, device)
+        self.register_buffer("cos", cos)
+        self.register_buffer("sin", sin)
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, cos, sin):
-        out = torch.cat([h(x, cos, sin) for h in self.heads], dim=-1) # concatenate over the channel dimension
+    def forward(self, x):
+        out = torch.cat([h(x, self.cos, self.sin) for h in self.heads], dim=-1) # concatenate over the channel dimension
         out = self.dropout(self.proj(out))
         return out
