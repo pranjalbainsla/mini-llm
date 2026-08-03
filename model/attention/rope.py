@@ -1,21 +1,25 @@
 import torch
 
-def precompute_freqs(head_size, max_seq_len, device):
+def precompute_freqs(head_dim, max_seq_len, device):
     theta = 1.0 / (
-        10000 ** (torch.arange(0, head_size, 2, device=device).float() / head_size)
+        10000 ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim)
     )
-    positions = torch.arange(max_seq_len, device=device) # max_seq_len == block_size == T
+    positions = torch.arange(max_seq_len, device=device)
     freqs = torch.outer(positions, theta)
-    cos = freqs.cos() # T, d/2
-    sin = freqs.sin()
-    return cos, sin
-  
+    return freqs.cos(), freqs.sin()
+
+
 def apply_rope(x, cos, sin):
-    x_even = x[..., ::2]
+    """
+    x:   (..., head_dim)
+    cos: broadcastable to (..., head_dim//2)
+    sin: broadcastable to (..., head_dim//2)
+    """
+
+    x_even = x[..., 0::2]
     x_odd  = x[..., 1::2]
 
-    x_rot_even = x_even * cos - x_odd * sin
-    x_rot_odd  = x_even * sin + x_odd * cos
+    out_even = x_even * cos - x_odd * sin
+    out_odd  = x_even * sin + x_odd * cos
 
-    x = torch.stack((x_rot_even, x_rot_odd), dim=-1)
-    return x.flatten(-2)
+    return torch.stack((out_even, out_odd), dim=-1).flatten(-2)

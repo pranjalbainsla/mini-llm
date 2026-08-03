@@ -67,8 +67,8 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
             KR = self.kr_cache
 
         # apply RoPE
-        cos_k = self.cos[:L].unsqueeze(0) # (1, L, d/2)
-        sin_k = self.sin[:L].unsqueeze(0) # (1, L, d/2)
+        cos_k = self.cos[:L].unsqueeze(0) # (1, L, dh_rotary/2)
+        sin_k = self.sin[:L].unsqueeze(0) # (1, L, dh_rotary/2)
         KR = apply_rope(KR, cos_k, sin_k)
         KR = KR.unsqueeze(2)   # (B, L, 1, dh_rotary)
         KR = KR.expand(-1, -1, self.n_head, -1) # (B, L, n_head, dh_rotary)
@@ -78,15 +78,16 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
 
         QC = self.up_q(cq)
         QR = self.q_rotary(cq) # B, T, n * (dh - dh_nr)
+        QR = QR.view(B, T, n, self.dh_rotary)
         if use_cache:
             start = self.cache_pos 
         else:
             start = 0
         end = start + T
-        cos_q = self.cos[start:end].unsqueeze(0)  # (1, T, head_dim/2)
-        sin_q = self.sin[start:end].unsqueeze(0)  # (1, T, head_dim/2)
+        cos_q = self.cos[start:end].unsqueeze(0).unsqueeze(2)  # (1, T, 1, dh_rotary/2)
+        sin_q = self.sin[start:end].unsqueeze(0).unsqueeze(2)  # (1, T, 1, dh_rotary/2)
         QR = apply_rope(QR, cos_q, sin_q)
-        QR = QR.view(B, T, n, dh - dh_nr)
+        # QR = QR.view(B, T, n, dh - dh_nr)
         QC = QC.view(B, T, n, dh_nr)
         Q = torch.cat([QC, QR], dim=-1)
         Q = Q.transpose(1, 2) # (B, n_head, T, dh)
