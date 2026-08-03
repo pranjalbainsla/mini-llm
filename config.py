@@ -20,13 +20,14 @@ k = 2
 dropout = 0.0
 alpha = 0.001
 n_kv_heads = 2
-latent_dim = 32
+latent_kv_dim = 32 # dc -> KV compression dimension
+latent_q_dim = 32 # dc' -> Query compression dimension
 
 # inference
 max_seq_len = 4096
 
 # Architecture
-attention = "gqa"      # mha, gqa, mla
+attention = "mla_deepseek"      # mha, gqa, mla
 ffn = "moe"            # mlp, moe, swiglu
 norm = "rmsnorm"     # layernorm, rmsnorm
 position = "rope"      # rope, learned, alibi
