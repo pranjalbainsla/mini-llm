@@ -38,7 +38,7 @@ class MultiheadLatentAttention(nn.Module):
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, use_cache=False):
+    def forward(self, x, use_cache):
         B, T, C = x.shape
         n, head_dim = self.n_head, self.head_dim
 

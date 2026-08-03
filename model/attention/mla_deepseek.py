@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from .rope import apply_rope, precompute_freqs
 from config import (
     dropout,
+    block_size,
     max_seq_len,
     device
 )
@@ -39,7 +40,7 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, x, use_cache=False):
+    def forward(self, x, use_cache):
         B, T, C = x.shape
         n, dh, dh_nr = self.n_head, self.dh, self.dh_non_rotary
 
@@ -47,7 +48,6 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         cq = self.down_proj_q(x) # separate q compression
         KR = self.k_rotary(x) # shared rotary key (B, T, dh_rotary)
 
-        # caching and taking up projections
         if use_cache:
             if self.kv_cache is None:
                 self.kv_cache = ckv
@@ -55,12 +55,16 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
             else:
                 self.kv_cache = torch.cat([self.kv_cache, ckv], dim=1)
                 self.kr_cache = torch.cat([self.kr_cache, KR], dim=1)
+                
+                if self.kv_cache.size(1) > block_size:
+                    self.kv_cache = self.kv_cache[:, -block_size:, :]
+                    self.kr_cache = self.kr_cache[:, -block_size:, :]
 
             KC = self.up_k(self.kv_cache) # still reconstruct k
-            VC = self.up_v(self.kv_cache) # needed
+            VC = self.up_v(self.kv_cache) 
         else:
             KC = self.up_k(ckv) 
-            VC = self.up_v(ckv) # needed
+            VC = self.up_v(ckv) 
 
         L = KC.size(1) 
         if use_cache:
