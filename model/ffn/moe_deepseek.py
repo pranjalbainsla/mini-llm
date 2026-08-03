@@ -13,7 +13,7 @@ class Expert(nn.Module):
             nn.Linear(4 * n_embd, n_embd),
             nn.Dropout(dropout),
         )
-
+        
     def forward(self, x):
         return self.net(x)
   
@@ -40,8 +40,8 @@ class MoEDeepSeek(nn.Module):
         router_logits = self.router(tokens) # (B*T, num_experts)
         # probs = F.softmax(router_logits, dim=-1)
         scores = torch.sigmoid(router_logits)
-        topk_probs, topk_idx = torch.topk(scores, self.k, dim=-1) # (B*T, k)
-        topk_probs /= topk_probs.sum(dim=-1, keepdim=True)
+        topk_scores, topk_idx = torch.topk(scores, self.k, dim=-1) # (B*T, k)
+        topk_probs = topk_scores / topk_scores.sum(dim=-1, keepdim=True)
 
         routed_out = torch.zeros_like(tokens)
 
