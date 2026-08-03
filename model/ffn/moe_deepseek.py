@@ -38,8 +38,9 @@ class MoEDeepSeek(nn.Module):
         tokens = x.reshape(B * T, C)
         
         router_logits = self.router(tokens) # (B*T, num_experts)
-        probs = F.softmax(router_logits, dim=-1)
-        topk_probs, topk_idx = torch.topk(probs, self.k, dim=-1) # (B*T, k)
+        # probs = F.softmax(router_logits, dim=-1)
+        scores = torch.sigmoid(router_logits)
+        topk_probs, topk_idx = torch.topk(scores, self.k, dim=-1) # (B*T, k)
         topk_probs /= topk_probs.sum(dim=-1, keepdim=True)
 
         routed_out = torch.zeros_like(tokens)
@@ -64,7 +65,8 @@ class MoEDeepSeek(nn.Module):
         out = routed_out + shared_out
 
         # Load balancing loss     
-        P = probs.mean(dim=0)
+        P = scores.mean(dim=0)
+        # P = probs.mean(dim=0)
         mask = F.one_hot(topk_idx, num_classes=self.num_experts).float()
         f = mask.sum(dim=1).float().mean(dim=0) / self.k
         aux_loss = self.num_experts * (P * f).sum()
