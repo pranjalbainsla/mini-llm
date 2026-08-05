@@ -39,18 +39,43 @@ class MLADeepSeekOptimized(nn.Module):
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-
     def forward(self, x, use_cache, use_weight_absorption):
         B, T, C = x.shape
-        n, dh, dh_nr = self.n_head, self.dh, self.dh_non_rotary
 
+        # ------------------- input projection -------------------------
         ckv = self.down_proj_kv(x) 
         cq = self.down_proj_q(x) # separate q compression
-        KR = self.k_rotary(x) # shared rotary key (B, T, dh_rotary)
+        K_rope = self.k_rotary(x) # shared rotary key (B, T, dh_rotary)
 
-        QC = self.up_q(cq)
-        QR = self.q_rotary(cq) # B, T, n * (dh - dh_nr)
-        QR = QR.view(B, T, n, self.dh_rotary)
+        # --------------------- cache update ---------------------------
+        if use_cache:
+            if self.kv_cache is None:
+                self.kv_cache = ckv
+                self.kr_cache = K_rope
+            else:
+                self.kv_cache = torch.cat([self.kv_cache, ckv], dim=1)
+                self.kr_cache = torch.cat([self.kr_cache, K_rope], dim=1)
+                
+                if self.kv_cache.size(1) > block_size:
+                    self.kv_cache = self.kv_cache[:, -block_size:, :]
+                    self.kr_cache = self.kr_cache[:, -block_size:, :]
+            self.cache_pos += T
+
+        # --------------- rotary parts --------------------------------
+        if use_cache:
+            K_rope = self.kr_cache
+
+        L = K_rope.size(1) 
+
+        # apply RoPE
+        cos_k = self.cos[:L].unsqueeze(0) # (1, L, dh_rotary/2)
+        sin_k = self.sin[:L].unsqueeze(0) # (1, L, dh_rotary/2)
+        K_rope = apply_rope(K_rope, cos_k, sin_k)
+        K_rope = K_rope.unsqueeze(2)   # (B, L, 1, dh_rotary)
+        K_rope = K_rope.expand(-1, -1, self.n_head, -1) # (B, L, n_head, dh_rotary)
+
+        Q_rope = self.q_rotary(cq) # B, T, n * (dh - dh_nr)
+        Q_rope = Q_rope.view(B, T, self.n_head, self.dh_rotary)
         if use_cache:
             start = self.cache_pos 
         else:
@@ -58,54 +83,49 @@ class MLADeepSeekOptimized(nn.Module):
         end = start + T
         cos_q = self.cos[start:end].unsqueeze(0).unsqueeze(2)  # (1, T, 1, dh_rotary/2)
         sin_q = self.sin[start:end].unsqueeze(0).unsqueeze(2)  # (1, T, 1, dh_rotary/2)
-        QR = apply_rope(QR, cos_q, sin_q)
-        # QR = QR.view(B, T, n, dh - dh_nr)
-        QC = QC.view(B, T, n, dh_nr)
-        Q = torch.cat([QC, QR], dim=-1)
-        Q = Q.transpose(1, 2) # (B, n_head, T, dh)
+        Q_rope = apply_rope(Q_rope, cos_q, sin_q)
+        Q_rope = Q_rope.transpose(1, 2)
 
-        if use_cache:
-            W_absorb = self.up_q.weight.T @ self.up_k.weight
-            if self.kv_cache is None:
-                self.kv_cache = ckv
-                self.kr_cache = KR
-            else:
-                self.kv_cache = torch.cat([self.kv_cache, ckv], dim=1)
-                self.kr_cache = torch.cat([self.kr_cache, KR], dim=1)
-                
-                if self.kv_cache.size(1) > block_size:
-                    self.kv_cache = self.kv_cache[:, -block_size:, :]
-                    self.kr_cache = self.kr_cache[:, -block_size:, :]
+        # ---------------------- attention ----------------------------
+        if use_weight_absorption:
+            # Attention path using absorbed weights
 
-            KC = self.up_k(self.kv_cache) # TODO: remove this
-            VC = self.up_v(self.kv_cache) 
+            # reshaping to add head dimension
+            Wq = self.up_q.weight.view(self.n_head, self.dh_non_rotary, -1)
+            Wk = self.up_k.weight.view(self.n_head, self.dh_non_rotary, -1) 
+
+            Q_absorb = torch.einsum(
+                "btl,hdl,hdk->bhtk",
+                cq,
+                Wq,
+                Wk
+            )  # (B, n_head, T, latent_kv_dim)
+
+            K_latent = self.kv_cache.unsqueeze(1)  # (B, 1, L, latent_kv_dim)
+            # you simply cannot have use_cache=False if you have turned on use_weight_absorption (it's senseless)
+            wei = (Q_absorb @ K_latent.transpose(-2, -1) + Q_rope @ K_rope.transpose(-2, -1)) / math.sqrt(self.dh) 
+            # scale it by dh only because dh = dh_nr + dh_r (by choice)
+
         else:
-            KC = self.up_k(ckv) 
-            VC = self.up_v(ckv) 
+            # original MLA path
+            if use_cache:
+                KC = self.up_k(self.kv_cache) 
+            else:
+                KC = self.up_k(ckv)
 
-        L = KC.size(1) 
-        if use_cache:
-            KR = self.kr_cache
+            KC = KC.view(B, L, self.n_head, self.dh_non_rotary) 
+            K = torch.cat([KC, K_rope], dim=-1) # (B, L, n_head, dh)
+            K = K.transpose(1, 2) # (B, n_head, L, dh)
 
-        # apply RoPE
-        cos_k = self.cos[:L].unsqueeze(0) # (1, L, dh_rotary/2)
-        sin_k = self.sin[:L].unsqueeze(0) # (1, L, dh_rotary/2)
-        KR = apply_rope(KR, cos_k, sin_k)
-        KR = KR.unsqueeze(2)   # (B, L, 1, dh_rotary)
-        KR = KR.expand(-1, -1, self.n_head, -1) # (B, L, n_head, dh_rotary)
-        KC = KC.view(B, L, n, dh_nr) 
-        K = torch.cat([KC, KR], dim=-1) # (B, L, n_head, dh)
-        K = K.transpose(1, 2) # (B, n_head, L, dh)
+            QC = self.up_q(cq)
+            QC = QC.view(B, T, self.n_head, self.dh_non_rotary)
 
+            Q = torch.cat([QC, Q_rope], dim=-1)
+            Q = Q.transpose(1, 2) # (B, n_head, T, dh)
+
+            wei = Q @ K.transpose(-2,-1) / math.sqrt(self.dh) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
         
-        
-        VC = VC.view(B, L, n,dh) # (B, L, n_head, dh)
-        VC = VC.transpose(1, 2) # (B, n_head, L, dh)
-
-        if use_cache:
-            self.cache_pos += T
-
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(dh) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
+        # ---------------------------------------------------
         # During training (or prefill), apply causal mask.
         # During cached decoding (T == 1), no mask is needed.
         if not (use_cache and T == 1):
@@ -115,12 +135,40 @@ class MLADeepSeekOptimized(nn.Module):
             )
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)
         wei = self.dropout(wei)
-        out = wei @ VC # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
 
-        # (B, T, C)
-        out = out.transpose(1, 2).contiguous().view(B, T, C)
+        # ------------- output ----------------------
+        # TODO: go over this again
 
-        out = self.proj(out)
+        if use_weight_absorption:
+            # (H, dh, latent_kv)
+            Wv = self.up_v.weight.view(self.n_head, self.dh, -1)
+
+            # (C, H, dh)
+            Wo = self.proj.weight.view(C, self.n_head, self.dh)
+
+            # (H, C, latent_kv)
+            W_out_absorb = torch.einsum(
+                "chd,hdl->hcl",
+                Wo,
+                Wv
+            )
+            latent_values = self.kv_cache if use_cache else ckv
+            latent_out = wei @ latent_values.unsqueeze(1)   # (B, H, T, latent_kv_dim)
+            out = torch.einsum("bhtl,hcl->btc", latent_out, W_out_absorb)
+        
+        else:
+            if use_cache:
+                VC = self.up_v(self.kv_cache)
+            else:
+                VC = self.up_v(ckv)
+            
+            VC = VC.view(B, L, self.n_head, self.dh)
+            VC = VC.transpose(1, 2)   # (B, H, L, dh)
+            out = wei @ VC # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
+
+            out = out.transpose(1, 2).contiguous().view(B, T, C)
+            out = self.proj(out)
+
         out = self.dropout(out)
 
         return out
