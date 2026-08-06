@@ -11,5 +11,5 @@ model.eval()
 if __name__ == "__main__":
     with torch.no_grad():
         context = torch.zeros((1, 1), dtype=torch.long, device=device)
-        output = model.generate(context, max_new_tokens=2000, use_cache=True)
+        output = model.generate(context, max_new_tokens=2000, use_cache=True, use_weight_absorption=True)
         print(decode(output[0].tolist()))

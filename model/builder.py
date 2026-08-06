@@ -2,6 +2,7 @@ import torch.nn as nn
 from config import *
 from model.attention.mha_optimized import MultiHeadAttentionOptimized
 from model.attention.mla_deepseek import MultiheadLatentAttentionDeepSeek
+from model.attention.mla_deepseek_optimized import MLADeepSeekOptimized
 from model.ffn.moe_deepseek import MoEDeepSeek
 from model.ffn.swiglu import SwiGLU
 from model.ffn.mlp import FeedForward
@@ -41,7 +42,10 @@ def build_attention():
 
     elif attention == "mla_deepseek":
         return MultiheadLatentAttentionDeepSeek(n_embd, n_head, latent_kv_dim, latent_q_dim)
-
+    
+    elif attention == "mla_deepseek_optimized":
+        return MLADeepSeekOptimized(n_embd, n_head, latent_kv_dim, latent_q_dim)
+    
     raise ValueError(f"Unknown Attention: {attention}")
 
 def build_norm():

@@ -20,7 +20,7 @@ class GPT(nn.Module):
         self.ln_f = nn.LayerNorm(n_embd) # final layer norm
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
-    def forward(self, idx, targets=None, use_cache=False):
+    def forward(self, idx, targets=None, use_cache=False, use_weight_absorption=False):
         B, T = idx.shape
         # idx and targets are both (B,T) tensor of integers
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
@@ -31,7 +31,7 @@ class GPT(nn.Module):
         total_aux = 0
         routing_info = []
         for block in self.blocks:
-          x, topk_idx = block(x, use_cache)
+          x, topk_idx = block(x, use_cache, use_weight_absorption)
           routing_info.append(topk_idx)
           # total_aux += aux
         x = self.ln_f(x) # (B,T,C)
@@ -74,12 +74,12 @@ class GPT(nn.Module):
     #         idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
     #     return idx
 
-    def generate(self, idx, max_new_tokens, use_cache):
+    def generate(self, idx, max_new_tokens, use_cache, use_weight_absorption):
         # idx: (B, T_prompt)
         self.reset_cache()
 
         # Prefill: process the entire prompt once and populate the KV cache
-        logits, _ = self(idx, use_cache=use_cache)
+        logits, _ = self(idx, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
         # Decode (T = 1 each iteration)
         for _ in range(max_new_tokens):
@@ -92,7 +92,7 @@ class GPT(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
             # Feed ONLY the new token; K/V for previous tokens are already cached
-            logits, _ = self(idx_next, use_cache=use_cache)
+            logits, _ = self(idx_next, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
         return idx
     

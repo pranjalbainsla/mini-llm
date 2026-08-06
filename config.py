@@ -25,12 +25,11 @@ n_kv_heads = 2
 latent_kv_dim = 32 # dc -> KV compression dimension
 latent_q_dim = 32 # dc' -> Query compression dimension
 
-
 # inference
 max_seq_len = 4096
 
 # Architecture
-attention = "mla_deepseek"      # mha, gqa, mla
+attention = "mla_deepseek_optimized"      # mha, gqa, mla, mla_deepseek_optimized
 ffn = "moe_deepseek"            # mlp, moe, swiglu
 norm = "rmsnorm"                # layernorm, rmsnorm
 position = "rope"               # rope, learned, alibi
