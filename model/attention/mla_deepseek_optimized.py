@@ -1,26 +1,26 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .rope import apply_rope, precompute_freqs
-from config import (
-    dropout,
-    block_size,
-    max_seq_len,
-    device
-)
 
 class MLADeepSeekOptimized(nn.Module):
 
-    def __init__(self, n_embd, n_head, latent_kv_dim, latent_q_dim):
+    def __init__(self, config):
         super().__init__()
-        assert n_embd % n_head == 0
-        self.n_head = n_head
-        self.dh = n_embd // n_head # Dimension of each attention head
-        ROTARY_RATIO = 0.25  
-        self.dh_rotary = int(self.dh * ROTARY_RATIO)
-        self.dh_non_rotary = self.dh - self.dh_rotary 
 
-        cos, sin = precompute_freqs(self.dh_rotary, max_seq_len, device)
+        assert config.n_embd % config.n_head == 0
+
+        self.n_head = config.n_head
+        self.dh = config.n_embd // config.n_head  # Dimension of each attention head
+        self.dh_rotary = int(self.dh * config.rotary_ratio)
+        self.dh_non_rotary = self.dh - self.dh_rotary
+
+        cos, sin = precompute_freqs(
+            self.dh_rotary,
+            config.max_seq_len,
+            device="cpu",
+        )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
@@ -28,19 +28,66 @@ class MLADeepSeekOptimized(nn.Module):
         self.kr_cache = None
         self.cache_pos = 0
 
-        self.down_proj_kv = nn.Linear(n_embd, latent_kv_dim, bias=False)
-        self.down_proj_q = nn.Linear(n_embd, latent_q_dim, bias=False)
+        self.down_proj_kv = nn.Linear(
+            config.n_embd,
+            config.latent_kv_dim,
+            bias=False,
+        )
 
-        self.k_rotary = nn.Linear(n_embd, self.dh_rotary, bias=False) # Shared rotary key is broadcast to every head to avoid storing per-head rotary keys.
-        self.q_rotary = nn.Linear(latent_q_dim, n_head * self.dh_rotary, bias=False)
+        self.down_proj_q = nn.Linear(
+            config.n_embd,
+            config.latent_q_dim,
+            bias=False,
+        )
 
-        self.up_k = nn.Linear(latent_kv_dim, n_head * self.dh_non_rotary, bias=False) 
-        self.up_v = nn.Linear(latent_kv_dim, n_head * self.dh, bias=False)
-        self.up_q = nn.Linear(latent_q_dim, n_head * self.dh_non_rotary, bias=False)
-        
-        self.register_buffer('tril', torch.tril(torch.ones(max_seq_len, max_seq_len)))
-        self.out_proj = nn.Linear(n_embd, n_embd, bias=False)
-        self.dropout = nn.Dropout(dropout)
+        # Shared rotary key is broadcast to every head.
+        self.k_rotary = nn.Linear(
+            config.n_embd,
+            self.dh_rotary,
+            bias=False,
+        )
+
+        self.q_rotary = nn.Linear(
+            config.latent_q_dim,
+            config.n_head * self.dh_rotary,
+            bias=False,
+        )
+
+        self.up_k = nn.Linear(
+            config.latent_kv_dim,
+            config.n_head * self.dh_non_rotary,
+            bias=False,
+        )
+
+        self.up_v = nn.Linear(
+            config.latent_kv_dim,
+            config.n_head * self.dh,
+            bias=False,
+        )
+
+        self.up_q = nn.Linear(
+            config.latent_q_dim,
+            config.n_head * self.dh_non_rotary,
+            bias=False,
+        )
+
+        self.register_buffer(
+            "tril",
+            torch.tril(
+                torch.ones(
+                    config.max_seq_len,
+                    config.max_seq_len,
+                )
+            ),
+        )
+
+        self.out_proj = nn.Linear(
+            config.n_embd,
+            config.n_embd,
+            bias=False,
+        )
+
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, use_cache, use_weight_absorption):
         B, T, C = x.shape

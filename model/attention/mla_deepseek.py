@@ -1,24 +1,27 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .rope import apply_rope, precompute_freqs
-from config import (
-    dropout,
-    block_size,
-    max_seq_len,
-    device
-)
 
 class MultiheadLatentAttentionDeepSeek(nn.Module):
 
-    def __init__(self, n_embd, n_head, latent_kv_dim, latent_q_dim):
+    def __init__(self, config):
         super().__init__()
-        assert n_embd % n_head == 0
-        self.n_head = n_head
-        self.dh = n_embd // n_head 
+
+        assert config.n_embd % config.n_head == 0
+
+        self.n_head = config.n_head
+        self.dh = config.n_embd // config.n_head
+
         self.dh_non_rotary = 3 * self.dh // 4
         self.dh_rotary = self.dh - self.dh_non_rotary
-        cos, sin = precompute_freqs(self.dh_rotary, max_seq_len, device)
+
+        cos, sin = precompute_freqs(
+            self.dh_rotary,
+            config.max_seq_len,
+            device="cpu",
+        )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
@@ -26,18 +29,57 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.kr_cache = None
         self.cache_pos = 0
 
-        self.down_proj_kv = nn.Linear(n_embd, latent_kv_dim)
-        self.up_k = nn.Linear(latent_kv_dim, n_head * self.dh_non_rotary) 
-        self.k_rotary = nn.Linear(n_embd, self.dh_rotary) # During attention you'll broadcast this same rotary key to every head.
+        self.down_proj_kv = nn.Linear(
+            config.n_embd,
+            config.latent_kv_dim,
+        )
 
-        self.up_v = nn.Linear(latent_kv_dim, n_head * self.dh)
-        self.down_proj_q = nn.Linear(n_embd, latent_q_dim)
-        self.up_q = nn.Linear(latent_q_dim, n_head * self.dh_non_rotary)
-        self.q_rotary = nn.Linear(latent_q_dim, n_head * self.dh_rotary)
+        self.up_k = nn.Linear(
+            config.latent_kv_dim,
+            config.n_head * self.dh_non_rotary,
+        )
 
-        self.register_buffer('tril', torch.tril(torch.ones(max_seq_len, max_seq_len)))
-        self.proj = nn.Linear(n_embd, n_embd)
-        self.dropout = nn.Dropout(dropout)
+        self.k_rotary = nn.Linear(
+            config.n_embd,
+            self.dh_rotary,
+        )
+
+        self.up_v = nn.Linear(
+            config.latent_kv_dim,
+            config.n_head * self.dh,
+        )
+
+        self.down_proj_q = nn.Linear(
+            config.n_embd,
+            config.latent_q_dim,
+        )
+
+        self.up_q = nn.Linear(
+            config.latent_q_dim,
+            config.n_head * self.dh_non_rotary,
+        )
+
+        self.q_rotary = nn.Linear(
+            config.latent_q_dim,
+            config.n_head * self.dh_rotary,
+        )
+
+        self.register_buffer(
+            "tril",
+            torch.tril(
+                torch.ones(
+                    config.max_seq_len,
+                    config.max_seq_len,
+                )
+            ),
+        )
+
+        self.proj = nn.Linear(
+            config.n_embd,
+            config.n_embd,
+        )
+
+        self.dropout = nn.Dropout(config.dropout)
 
 
     def forward(self, x, use_cache):

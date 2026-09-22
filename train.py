@@ -1,23 +1,28 @@
 import torch
-from config import (
-    learning_rate,
-    max_iters,
-    device,
-    eval_interval,
-    eval_iters,
-)
+from types import SimpleNamespace
+
+# Load defaults + command-line overrides
+exec(open("configurator.py").read())
+
+config = SimpleNamespace(**{
+    k: v for k, v in globals().items()
+    if not k.startswith("_")
+})
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 from model.gpt import GPT
 from data.dataset import vocab_size, get_batch
 
-model = GPT(vocab_size=vocab_size).to(device)
+model = GPT(vocab_size=vocab_size, config=config).to(device)
 
 @torch.no_grad()
 def estimate_loss():
     out = {}
     model.eval()
     for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
+        losses = torch.zeros(config.eval_iters)
+        for k in range(config.eval_iters):
             X, Y = get_batch(split)
             logits, loss = model(X, Y)
             losses[k] = loss.item()
@@ -26,7 +31,7 @@ def estimate_loss():
     return out
 
 # create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 best_val_loss = float("inf")
 start_step = 0
 
@@ -43,10 +48,10 @@ except FileNotFoundError:
 step = start_step
 
 try:
-    for step in range(start_step, max_iters):
+    for step in range(start_step, config.max_iters):
 
         # every once in a while evaluate the loss on train and val sets
-        if step % eval_interval == 0 or step == max_iters - 1:
+        if step % config.eval_interval == 0 or step == config.max_iters - 1:
             losses = estimate_loss()
             print(f"step {step}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 

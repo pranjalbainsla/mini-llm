@@ -1,17 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import (
-    dropout,
-)
+
 class Expert(nn.Module):
-    def __init__(self, n_embd):
+    def __init__(self, config):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, 4 * n_embd),
+            nn.Linear(config.n_embd, 4 * config.n_embd),
             nn.GELU(),
-            nn.Linear(4 * n_embd, n_embd),
-            nn.Dropout(dropout),
+            nn.Linear(4 * config.n_embd, config.n_embd),
+            nn.Dropout(config.dropout),
         )
 
     def forward(self, x):
@@ -20,21 +18,21 @@ class Expert(nn.Module):
 class MoEDeepSeek(nn.Module):
     """ Adds always-active shared experts alongside routed experts """
 
-    def __init__(self, n_embd, num_experts, num_shared_experts, k, bias_update_speed):
+    def __init__(self, config):
         super().__init__()
-        self.num_experts = num_experts
-        self.num_shared_experts = num_shared_experts
-        self.k = k
-        self.target_fraction = k / num_experts
-        self.bias_update_speed = bias_update_speed
-        self.router = nn.Linear(n_embd, num_experts)
+        self.num_experts = config.num_experts
+        self.num_shared_experts = config.num_shared_experts
+        self.k = config.k
+        self.target_fraction = config.k / config.num_experts
+        self.bias_update_speed = config.bias_update_speed
+        self.router = nn.Linear(config.n_embd, config.num_experts)
         self.experts = nn.ModuleList(
-            [Expert(n_embd) for _ in range(num_experts)]
+            [Expert(config) for _ in range(config.num_experts)]
         )
         self.shared_experts = nn.ModuleList(
-            [Expert(n_embd) for _ in range(num_shared_experts)]
+            [Expert(config) for _ in range(config.num_shared_experts)]
         )
-        self.register_buffer("expert_bias", torch.zeros(num_experts))
+        self.register_buffer("expert_bias", torch.zeros(config.num_experts))
 
     def forward(self, x):
         B, T, C = x.shape

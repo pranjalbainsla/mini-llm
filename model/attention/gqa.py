@@ -1,25 +1,27 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .rope import apply_rope, precompute_freqs
-from config import (
-    dropout,
-    max_seq_len,
-    block_size,
-    device
-)
 
 class GroupedQueryAttention(nn.Module):
 
-    def __init__(self, n_embd, n_head, n_kv_heads):
+    def __init__(self, config):
         super().__init__()
-        assert n_embd % n_head == 0
-        assert n_head % n_kv_heads == 0
-        self.n_head = n_head
-        self.head_dim = n_embd // n_head
-        self.n_kv_heads = n_kv_heads
-        self.repeat = n_head // n_kv_heads
-        cos, sin = precompute_freqs(self.head_dim, max_seq_len, device)
+
+        assert config.n_embd % config.n_head == 0
+        assert config.n_head % config.n_kv_heads == 0
+
+        self.n_head = config.n_head
+        self.head_dim = config.n_embd // config.n_head
+        self.n_kv_heads = config.n_kv_heads
+        self.repeat = config.n_head // config.n_kv_heads
+
+        cos, sin = precompute_freqs(
+            self.head_dim,
+            config.max_seq_len,
+            device="cpu",
+        )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
@@ -27,12 +29,25 @@ class GroupedQueryAttention(nn.Module):
         self.v_cache = None
         self.cache_pos = 0
 
-        self.q_proj = nn.Linear(n_embd, n_embd)
-        self.k_proj = nn.Linear(n_embd, n_kv_heads * self.head_dim)
-        self.v_proj = nn.Linear(n_embd, n_kv_heads * self.head_dim)
-        self.register_buffer('tril', torch.tril(torch.ones(max_seq_len, max_seq_len)))
-        self.proj = nn.Linear(n_embd, n_embd)
-        self.dropout = nn.Dropout(dropout)
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.k_proj = nn.Linear(
+            config.n_embd,
+            config.n_kv_heads * self.head_dim,
+        )
+        self.v_proj = nn.Linear(
+            config.n_embd,
+            config.n_kv_heads * self.head_dim,
+        )
+
+        self.register_buffer(
+            "tril",
+            torch.tril(
+                torch.ones(config.max_seq_len, config.max_seq_len)
+            ),
+        )
+
+        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, use_cache):
         B, T, C = x.shape

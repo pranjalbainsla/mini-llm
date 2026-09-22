@@ -1,59 +1,60 @@
 import torch.nn as nn
-from config import *
-from model.attention.mha_optimized import MultiHeadAttentionOptimized
-from model.attention.mla_deepseek import MultiheadLatentAttentionDeepSeek
-from model.attention.mla_deepseek_optimized import MLADeepSeekOptimized
-from model.ffn.moe_deepseek import MoEDeepSeek
-from model.ffn.swiglu import SwiGLU
-from model.ffn.mlp import FeedForward
-from model.ffn.moe import MoE
-from model.attention.mha import MultiHeadAttention
-from model.attention.gqa import GroupedQueryAttention
-from model.norm.rmsnorm import RMSNorm
+
+from .attention.mha import MultiHeadAttention
+from .attention.mha_optimized import MultiHeadAttentionOptimized
+from .attention.gqa import GroupedQueryAttention
+from .attention.mla_deepseek import MultiheadLatentAttentionDeepSeek
+from .attention.mla_deepseek_optimized import MLADeepSeekOptimized
+
+from .ffn.mlp import FeedForward
+from .ffn.swiglu import SwiGLU
+from .ffn.moe import MoE
+from .ffn.moe_deepseek import MoEDeepSeek
+
+from .norm.rmsnorm import RMSNorm
 
 
-def build_ffn():
-    if ffn == "mlp":
-        return FeedForward(n_embd)
+def build_ffn(config):
+    if config.ffn == "mlp":
+        return FeedForward(config)
 
-    elif ffn == "moe":
-        return MoE(n_embd, num_experts, k)
+    elif config.ffn == "moe":
+        return MoE(config)
     
-    elif ffn == "moe_deepseek":
-        return MoEDeepSeek(n_embd, num_experts, num_shared_experts, k)
+    elif config.ffn == "moe_deepseek":
+        return MoEDeepSeek(config)
     
-    elif ffn == "swiglu":
-        hidden_dim = int(8 * n_embd / 3)
-        return SwiGLU(n_embd, hidden_dim)
+    elif config.ffn == "swiglu":
+        return SwiGLU(config)
 
     else:
-        raise ValueError(f"Unknown FFN: {ffn}")
+        raise ValueError(f"Unknown FFN: {config.ffn}")
 
-def build_attention():
+def build_attention(config):
 
-    if attention == "mha":
-        return MultiHeadAttention(n_head, n_embd // n_head)
+    if config.attention == "mha":
+        return MultiHeadAttention(config)
     
-    elif attention == "mha_optimized":
-        return MultiHeadAttentionOptimized(n_embd, n_head)
+    elif config.attention == "mha_optimized":
+        return MultiHeadAttentionOptimized(config)
 
-    elif attention == "gqa":
-        return GroupedQueryAttention(n_embd, n_head, n_kv_heads)
+    elif config.attention == "gqa":
+        return GroupedQueryAttention(config)
 
-    elif attention == "mla_deepseek":
-        return MultiheadLatentAttentionDeepSeek(n_embd, n_head, latent_kv_dim, latent_q_dim)
+    elif config.attention == "mla_deepseek":
+        return MultiheadLatentAttentionDeepSeek(config)
     
-    elif attention == "mla_deepseek_optimized":
-        return MLADeepSeekOptimized(n_embd, n_head, latent_kv_dim, latent_q_dim)
+    elif config.attention == "mla_deepseek_optimized":
+        return MLADeepSeekOptimized(config)
     
-    raise ValueError(f"Unknown Attention: {attention}")
+    raise ValueError(f"Unknown Attention: {config.attention}")
 
-def build_norm():
+def build_norm(config):
 
-    if norm == "layernorm":
-        return nn.LayerNorm(n_embd)
+    if config.norm == "layernorm":
+        return nn.LayerNorm(config.n_embd)
 
-    elif norm == "rmsnorm":
-        return RMSNorm(n_embd)
+    elif config.norm == "rmsnorm":
+        return RMSNorm(config)
 
-    raise ValueError(f"Unknown Norm: {norm}")
+    raise ValueError(f"Unknown Norm: {config.norm}")

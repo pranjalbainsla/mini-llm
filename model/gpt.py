@@ -1,24 +1,22 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import (
-    n_embd,
-    n_head,
-    n_layer,
-    alpha
-)
+
 from .block import Block
 
 class GPT(nn.Module):
 
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size, config):
         super().__init__()
+
+        self.config = config
+
         # each token directly reads off the logits for the next token from a lookup table
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+        self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
         # self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = nn.ModuleList([Block(n_embd, n_head=n_head) for _ in range(n_layer)])
-        self.ln_f = nn.LayerNorm(n_embd) # final layer norm
-        self.lm_head = nn.Linear(n_embd, vocab_size)
+        self.blocks = nn.ModuleList([Block(config.n_embd, n_head=config.n_head) for _ in range(config.n_layer)])
+        self.ln_f = nn.LayerNorm(config.n_embd) # final layer norm
+        self.lm_head = nn.Linear(config.n_embd, vocab_size)
 
     def forward(self, idx, targets=None, use_cache=False, use_weight_absorption=False):
         B, T = idx.shape
@@ -48,7 +46,7 @@ class GPT(nn.Module):
             total_loss = ce_loss
 
             if total_aux is not None:
-                total_loss = ce_loss + alpha * total_aux
+                total_loss = ce_loss + self.config.alpha * total_aux 
 
         return logits, total_loss, routing_info
     

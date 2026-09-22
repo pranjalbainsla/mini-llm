@@ -1,22 +1,18 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .rope import apply_rope, precompute_freqs
-from config import (
-    block_size,
-    dropout,
-    max_seq_len,
-    device
-)
 
 class MultiHeadAttentionOptimized(nn.Module):
 
-    def __init__(self, n_embd, n_head):
+    def __init__(self, config):
+
         super().__init__()
-        assert n_embd % n_head == 0
-        self.n_head = n_head
-        self.head_dim = n_embd // n_head
-        cos, sin = precompute_freqs(self.head_dim, max_seq_len, device)
+        assert config.n_embd % config.n_head == 0
+        self.n_head = config.n_head
+        self.head_dim = config.n_embd // config.n_head
+        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len, device="cpu")
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
@@ -24,12 +20,12 @@ class MultiHeadAttentionOptimized(nn.Module):
         self.v_cache = None
         self.cache_pos = 0
 
-        self.q_proj = nn.Linear(n_embd, n_embd)
-        self.k_proj = nn.Linear(n_embd, n_embd)
-        self.v_proj = nn.Linear(n_embd, n_embd)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
-        self.proj = nn.Linear(n_embd, n_embd)
-        self.dropout = nn.Dropout(dropout)
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.k_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.v_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, use_cache):
         B, T, C = x.shape

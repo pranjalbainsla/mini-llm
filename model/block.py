@@ -1,5 +1,6 @@
 import torch 
 import torch.nn as nn
+
 from .builder import build_ffn
 from .builder import build_attention
 from .builder import build_norm
@@ -7,15 +8,13 @@ from .builder import build_norm
 class Block(nn.Module):
     """ Transformer block: communication followed by computation """
 
-    def __init__(self, n_embd, n_head):
+    def __init__(self, config):
         # n_embd: embedding dimension, n_head: the number of heads we'd like
         super().__init__()
-        self.attn = build_attention()
-        # self.ffwd = FeedFoward(n_embd)
-        # self.moe = MoE(n_embd, num_experts)
-        self.ffn = build_ffn()
-        self.ln1 = build_norm()
-        self.ln2 = build_norm()
+        self.attn = build_attention(config)
+        self.ffn = build_ffn(config)
+        self.ln1 = build_norm(config)
+        self.ln2 = build_norm(config)
 
     def forward(self, x, use_cache, use_weight_absorption):
         x = x + self.attn(self.ln1(x), use_cache=use_cache, use_weight_absorption=use_weight_absorption)

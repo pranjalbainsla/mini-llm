@@ -1,26 +1,22 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .rope import apply_rope, precompute_freqs
-from config import (
-    n_embd,
-    block_size,
-    dropout,
-    max_seq_len,
-    device
-)
 
 class Head(nn.Module):
     """ one head of self-attention """
 
-    def __init__(self, head_dim):
+    def __init__(self, config):
+
         super().__init__()
-        self.head_dim = head_dim
-        self.key = nn.Linear(n_embd, head_dim, bias=False)
-        self.query = nn.Linear(n_embd, head_dim, bias=False)
-        self.value = nn.Linear(n_embd, head_dim, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
-        self.dropout = nn.Dropout(dropout)
+
+        self.head_dim = config.head_dim
+        self.key = nn.Linear(config.n_embd, config.head_dim, bias=False)
+        self.query = nn.Linear(config.n_embd, config.head_dim, bias=False)
+        self.value = nn.Linear(config.n_embd, config.head_dim, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, cos, sin):
         B,T,C = x.shape
@@ -44,14 +40,14 @@ class Head(nn.Module):
 class MultiHeadAttention(nn.Module):
     """ multiple heads of self-attention in parallel """
 
-    def __init__(self, n_head, head_dim):
+    def __init__(self, config):
         super().__init__()
-        cos, sin = precompute_freqs(head_dim, max_seq_len, device)
+        cos, sin = precompute_freqs(config.head_dim, config.max_seq_len, device="cpu")
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
-        self.heads = nn.ModuleList([Head(head_dim) for _ in range(n_head)])
-        self.proj = nn.Linear(n_embd, n_embd)
-        self.dropout = nn.Dropout(dropout)
+        self.heads = nn.ModuleList([Head(config) for _ in range(config.n_head)])
+        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
         out = torch.cat([h(x, self.cos, self.sin) for h in self.heads], dim=-1) # concatenate over the channel dimension

@@ -1,42 +1,66 @@
 import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .rope import apply_rope, precompute_freqs
-from config import (
-    dropout,
-    max_seq_len,
-    device
-)
 
 class MultiheadLatentAttention(nn.Module):
 
-    def __init__(self, n_embd, n_head, latent_dim):
+    def __init__(self, config):
         super().__init__()
-        assert n_embd % n_head == 0
-        self.n_head = n_head
-        self.head_dim = n_embd // n_head
+
+        assert config.n_embd % config.n_head == 0
+
+        self.n_head = config.n_head
+        self.head_dim = config.n_embd // config.n_head
+
         self.kv_cache = None
         self.cache_pos = 0
-        cos, sin = precompute_freqs(self.head_dim, max_seq_len, device)
+
+        cos, sin = precompute_freqs(
+            self.head_dim,
+            config.max_seq_len,
+            device="cpu",
+        )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
         self.down = nn.Linear(
-            n_embd,
-            latent_dim,
+            config.n_embd,
+            config.latent_kv_dim,
         )
+
         self.up_k = nn.Linear(
-            latent_dim,
-            n_head * self.head_dim,
+            config.latent_kv_dim,
+            config.n_head * self.head_dim,
         )
+
         self.up_v = nn.Linear(
-            latent_dim,
-            n_head * self.head_dim,
+            config.latent_kv_dim,
+            config.n_head * self.head_dim,
         )
-        self.q_proj = nn.Linear(n_embd, n_embd)
-        self.register_buffer('tril', torch.tril(torch.ones(max_seq_len, max_seq_len)))
-        self.proj = nn.Linear(n_embd, n_embd)
-        self.dropout = nn.Dropout(dropout)
+
+        self.q_proj = nn.Linear(
+            config.n_embd,
+            config.n_embd,
+        )
+
+        self.register_buffer(
+            "tril",
+            torch.tril(
+                torch.ones(
+                    config.max_seq_len,
+                    config.max_seq_len,
+                )
+            ),
+        )
+
+        self.proj = nn.Linear(
+            config.n_embd,
+            config.n_embd,
+        )
+
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, use_cache):
         B, T, C = x.shape
