@@ -17,10 +17,10 @@ n_kv_heads = 2
 block_size = 32
 
 # Architecture
-attention = "mla_deepseek_optimized"    # mha, mha_optimized, gqa, mla_deepseek, mla_deepseek_optimized
-ffn = "moe_deepseek"                    # mlp, swiglu, moe, moe_deepseek
-norm = "rmsnorm"                        # layernorm, rmsnorm
-position = "rope"                       # rope, learned, alibi
+attention = "mha"                       
+ffn = "mlp"                    
+norm = "rmsnorm"                        
+position = "rope"                       
 
 # Attention / position encoding
 latent_kv_dim = 32                      # MLA: compressed KV dimension
