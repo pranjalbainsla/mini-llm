@@ -5,8 +5,6 @@ __pycache__/
 venv/
 .env
 
-data/input.txt
-checkpoints/
 onnx/
 *.onnx
 notes.txt
