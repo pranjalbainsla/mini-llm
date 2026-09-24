@@ -23,8 +23,8 @@
 │   │   ├── mha.py                      # Basic multi-head self-attention
 │   │   ├── mha_optimized.py            # Optimized MHA with KV caching
 │   │   ├── gqa.py                      # Grouped-Query Attention with KV caching
-│   │   ├── mla.py                      # Basic Multi-head Latent Attention
-│   │   ├── mla_deepseek.py             # DeepSeek-style MLA implementation
+│   │   ├── mla.py                      # Naive Multi-head Latent Attention
+│   │   ├── mla_deepseek.py             # DeepSeek-style MLA implementation (without weight absorption)
 │   │   ├── mla_deepseek_optimized.py   # Optimized DeepSeek MLA with weight absorption
 │   │   └── rope.py                     # Rotary positional embedding utilities
 │   │
@@ -37,7 +37,7 @@
 │   │
 │   └── norm/
 │       ├── __init__.py                 # Normalization registry
-│       ├── layernorm.py                # LayerNorm implemented from scratch
+│       ├── layernorm.py                # LayerNorm implemention
 │       └── rmsnorm.py                  # RMSNorm implementation
 │
 ├── train.py                            # Main training loop, evaluation and checkpointing
