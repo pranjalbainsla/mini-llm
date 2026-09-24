@@ -1,3 +1,4 @@
+# Deprecated
 import torch
 from config import (
     block_size,

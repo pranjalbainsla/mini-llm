@@ -10,5 +10,6 @@ checkpoints/
 onnx/
 *.onnx
 notes.txt
+bench.py
 
 .DS_Store
