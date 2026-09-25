@@ -17,7 +17,13 @@ class Block(nn.Module):
         self.ln2 = build_norm(config)
 
     def forward(self, x, **kwargs):
-        x = x + self.attn(self.ln1(x), **kwargs)
+        if hasattr(self.attn, "reset_cache"):  # cached attention
+            attn_out = self.attn(self.ln1(x), **kwargs)
+        else:
+            attn_out = self.attn(self.ln1(x))
+
+        x = x + attn_out
+        
         # ffn_out, aux_loss  = self.ffn(self.ln2(x))
         ffn_out, topk_idx = self.ffn(self.ln2(x))
         x = x + ffn_out

@@ -43,11 +43,16 @@ class GPT(nn.Module):
 
     def reset_cache(self):
         for block in self.blocks:
+          if hasattr(block.attn, "reset_cache"):
             block.attn.reset_cache()
 
     def generate(self, idx, max_new_tokens, use_cache=False, use_weight_absorption=False, temperature=1.0, top_k=None):
         self.reset_cache()
-        logits, _, _ = self(idx, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
+
+        # if the sequence context is growing too long we must crop it at block_size
+        idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
+
+        logits, _, _ = self(idx_cond, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
         for _ in range(max_new_tokens):
             logits = logits[:, -1, :] / temperature

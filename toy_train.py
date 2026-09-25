@@ -115,7 +115,7 @@ elif init_from == "resume":
             print(f"resume: overriding config.{key}={config.get(key)!r} -> "
                   f"{checkpoint_config[key]!r} (shape-critical, taken from checkpoint)")
         config[key] = checkpoint_config[key]
-        
+
     # everything else (learning_rate, max_iters, eval_interval, batch_size, ...)
     # is intentionally left as whatever the current config file / CLI says,
     # so you can resume with tweaked training-loop settings on the same model.
@@ -182,7 +182,7 @@ while True:
                 }
                 print(f"saving checkpoint to {out_dir}")
                 os.makedirs(out_dir, exist_ok=True)
-                ckpt_name = f"base_n{config.n_layer}_h{config.n_head}_d{config.n_embd}.pt"
+                ckpt_name = f"base_n{config["n_layer"]}_h{config["n_head"]}_d{config["n_embd"]}.pt"
                 torch.save(checkpoint, os.path.join(out_dir, ckpt_name)) # e.g. out/base_n4_h4_d128.pt
                 # Note: two runs with the same architecture will overwrite the same checkpoint. 
                 # Add a run ID or timestamp if you want to preserve both 
