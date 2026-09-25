@@ -12,9 +12,9 @@ class Head(nn.Module):
         super().__init__()
 
         self.head_dim = config.n_embd // config.n_head
-        self.key = nn.Linear(config.n_embd, self.head_dim, bias=False)
-        self.query = nn.Linear(config.n_embd, self.head_dim, bias=False)
-        self.value = nn.Linear(config.n_embd, self.head_dim, bias=False)
+        self.key = nn.Linear(config.n_embd, self.head_dim, bias=config.bias)
+        self.query = nn.Linear(config.n_embd, self.head_dim, bias=config.bias)
+        self.value = nn.Linear(config.n_embd, self.head_dim, bias=config.bias)
         self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)))
         self.dropout = nn.Dropout(config.dropout)
 
@@ -23,8 +23,8 @@ class Head(nn.Module):
 
         k = self.key(x)   # (B,T,head_dim)
         q = self.query(x) # (B,T,head_dim)
-        cos = cos.unsqueeze(0) # (1, T, head_dim/2)
-        sin = sin.unsqueeze(0)
+        cos = cos[:T].unsqueeze(0) # (1, T, head_dim/2)
+        sin = sin[:T].unsqueeze(0) # (1, T, head_dim/2)
         q = apply_rope(q, cos, sin)
         k = apply_rope(k, cos, sin)
         # compute attention scores ("affinities")
@@ -43,11 +43,11 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.head_dim = config.n_embd // config.n_head
-        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len, device="cpu")
+        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len)
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
         self.heads = nn.ModuleList([Head(config) for _ in range(config.n_head)])
-        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):

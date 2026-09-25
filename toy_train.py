@@ -51,7 +51,7 @@ bias = False # TODO:
 dropout = 0.0
 # -----------------------------------------------------------------------------
 # system
-device = 'cuda'  # 'cpu', 'cuda', 'cuda:0', etc., or 'mps' on macbooks
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
 # -----------------------------------------------------------------------------

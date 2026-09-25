@@ -17,14 +17,14 @@ class GPT(nn.Module):
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, vocab_size)
 
-    def forward(self, idx, targets=None, use_cache=False, use_weight_absorption=False):
+    def forward(self, idx, targets=None, **kwargs):
         B, T = idx.shape
         x = self.token_embedding_table(idx) # (B,T,C)
 
         total_aux = None  # aux loss (e.g. MoE load-balancing) not wired up yet
         routing_info = []
         for block in self.blocks:
-            x, topk_idx = block(x, use_cache, use_weight_absorption)
+            x, topk_idx = block(x, **kwargs)
             routing_info.append(topk_idx)
         x = self.ln_f(x)
         logits = self.lm_head(x) # (B,T,vocab_size)
