@@ -14,4 +14,5 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x):
-        return self.net(x)
+        return self.net(x), None # to make this module consistent with the MoE interface
+        # so Block can always unpack ffn_out, topk_idx regardless of which FFN is used.

@@ -62,5 +62,5 @@ class GPT(nn.Module):
     @torch.no_grad()
     def update_expert_bias(self, routing_info):
         for block, topk_idx in zip(self.blocks, routing_info):
-            if hasattr(block.ffwd, "update_expert_bias"):
-                block.ffwd.update_expert_bias(topk_idx)
+            if hasattr(block.ffn, "update_expert_bias"):
+                block.ffn.update_expert_bias(topk_idx)

@@ -1,10 +1,10 @@
 import torch
 
-def precompute_freqs(head_dim, max_seq_len, device):
+def precompute_freqs(head_dim, max_seq_len):
     theta = 1.0 / (
-        10000 ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim)
+        10000 ** (torch.arange(0, head_dim, 2).float() / head_dim)
     )
-    positions = torch.arange(max_seq_len, device=device)
+    positions = torch.arange(max_seq_len)
     freqs = torch.outer(positions, theta)
     return freqs.cos(), freqs.sin()
 
