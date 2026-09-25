@@ -1,10 +1,15 @@
+"""
+(Purely for understanding)
+
+Refer to sample.py to get the generation script
+"""
 import torch
-from config import device
+
 from model.gpt import GPT
 from data.dataset import decode, vocab_size
 
 model = GPT(vocab_size=vocab_size).to(device)
-ckpt = torch.load("best_checkpoint.pt", map_location=device)
+ckpt = torch.load("ckpt.pt", map_location=device)
 model.load_state_dict(ckpt["model"])
 model.eval()
 

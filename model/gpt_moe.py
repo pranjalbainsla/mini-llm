@@ -45,16 +45,21 @@ class GPT(nn.Module):
         for block in self.blocks:
             block.attn.reset_cache()
 
-    def generate(self, idx, max_new_tokens, use_cache, use_weight_absorption):
+    def generate(self, idx, max_new_tokens, use_cache=False, use_weight_absorption=False, temperature=1.0, top_k=None):
         self.reset_cache()
-
         logits, _, _ = self(idx, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
         for _ in range(max_new_tokens):
-            logits = logits[:, -1, :]
+            logits = logits[:, -1, :] / temperature
+
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float("inf")
+
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, idx_next), dim=1)
+
             logits, _, _ = self(idx_next, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
         return idx

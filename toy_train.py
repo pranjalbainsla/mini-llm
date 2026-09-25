@@ -32,7 +32,7 @@ from model.gpt_moe import GPT
 # (re-wget/upload that file) — it doesn't need a config entry, and vocab_size
 # is derived straight from whatever's in that file, never hand-set.
 
-out_dir = 'checkpoints'
+out_dir = 'out'
 init_from = 'scratch'            # 'scratch' or 'resume'
 eval_only = False                # if True, run a single eval pass and exit (sanity check)
 always_save_checkpoint = False   # if True, save every eval, not just on val-loss improvement
@@ -97,16 +97,25 @@ STRUCTURAL_KEYS = ['n_embd', 'n_head', 'n_layer']
 if init_from == 'scratch':
     print("Initializing a new model from scratch")
 
-elif init_from == 'resume':
+elif init_from == "resume":
     print(f"Resuming training from {out_dir}")
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+
+    base_ckpt = next(
+        (f for f in os.listdir(out_dir) if f.startswith("base_") and f.endswith(".pt")),
+        None,
+    )
+    ckpt_name = base_ckpt if base_ckpt else "ckpt.pt"
+    ckpt_path = os.path.join(out_dir, ckpt_name)
+
     checkpoint = torch.load(ckpt_path, map_location=device)
-    checkpoint_config = checkpoint['config']
+    checkpoint_config = checkpoint["config"]
+
     for key in STRUCTURAL_KEYS:
         if config.get(key) != checkpoint_config.get(key):
             print(f"resume: overriding config.{key}={config.get(key)!r} -> "
                   f"{checkpoint_config[key]!r} (shape-critical, taken from checkpoint)")
         config[key] = checkpoint_config[key]
+        
     # everything else (learning_rate, max_iters, eval_interval, batch_size, ...)
     # is intentionally left as whatever the current config file / CLI says,
     # so you can resume with tweaked training-loop settings on the same model.
@@ -173,8 +182,8 @@ while True:
                 }
                 print(f"saving checkpoint to {out_dir}")
                 os.makedirs(out_dir, exist_ok=True)
-                ckpt_name = f"n{config.n_layer}_h{config.n_head}_d{config.n_embd}.pt"
-                torch.save(checkpoint, os.path.join(out_dir, ckpt_name)) # e.g. checkpoints/n4_h4_d128.pt
+                ckpt_name = f"base_n{config.n_layer}_h{config.n_head}_d{config.n_embd}.pt"
+                torch.save(checkpoint, os.path.join(out_dir, ckpt_name)) # e.g. out/base_n4_h4_d128.pt
                 # Note: two runs with the same architecture will overwrite the same checkpoint. 
                 # Add a run ID or timestamp if you want to preserve both 
                 # TODO: add best/latest split
