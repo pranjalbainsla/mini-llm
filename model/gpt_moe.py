@@ -13,7 +13,7 @@ class GPT(nn.Module):
 
         self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
         # Positional embeddings live inside the attention layer
-        self.blocks = nn.ModuleList([Block(config.n_embd, n_head=config.n_head) for _ in range(config.n_layer)])
+        self.blocks = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, vocab_size)
 

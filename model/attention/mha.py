@@ -11,10 +11,10 @@ class Head(nn.Module):
 
         super().__init__()
 
-        self.head_dim = config.head_dim
-        self.key = nn.Linear(config.n_embd, config.head_dim, bias=False)
-        self.query = nn.Linear(config.n_embd, config.head_dim, bias=False)
-        self.value = nn.Linear(config.n_embd, config.head_dim, bias=False)
+        self.head_dim = config.n_embd // config.n_head
+        self.key = nn.Linear(config.n_embd, self.head_dim, bias=False)
+        self.query = nn.Linear(config.n_embd, self.head_dim, bias=False)
+        self.value = nn.Linear(config.n_embd, self.head_dim, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)))
         self.dropout = nn.Dropout(config.dropout)
 
@@ -42,7 +42,8 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        cos, sin = precompute_freqs(config.head_dim, config.max_seq_len, device="cpu")
+        self.head_dim = config.n_embd // config.n_head
+        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len, device="cpu")
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
         self.heads = nn.ModuleList([Head(config) for _ in range(config.n_head)])
