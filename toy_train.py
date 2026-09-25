@@ -32,7 +32,7 @@ from model.gpt_moe import GPT
 # (re-wget/upload that file) — it doesn't need a config entry, and vocab_size
 # is derived straight from whatever's in that file, never hand-set.
 
-out_dir = 'out'
+out_dir = 'checkpoints'
 init_from = 'scratch'            # 'scratch' or 'resume'
 eval_only = False                # if True, run a single eval pass and exit (sanity check)
 always_save_checkpoint = False   # if True, save every eval, not just on val-loss improvement
@@ -173,9 +173,11 @@ while True:
                 }
                 print(f"saving checkpoint to {out_dir}")
                 os.makedirs(out_dir, exist_ok=True)
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
-                # TODO: derive out_dir from a run name (timestamp/git hash/exp_name)
-                # rather than hardcoding filenames; add best/latest split.
+                ckpt_name = f"n{config.n_layer}_h{config.n_head}_d{config.n_embd}.pt"
+                torch.save(checkpoint, os.path.join(out_dir, ckpt_name)) # e.g. checkpoints/n4_h4_d128.pt
+                # Note: two runs with the same architecture will overwrite the same checkpoint. 
+                # Add a run ID or timestamp if you want to preserve both 
+                # TODO: add best/latest split
 
     if iter_num == 0 and eval_only:
         break

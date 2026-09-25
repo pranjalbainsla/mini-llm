@@ -9,5 +9,6 @@ onnx/
 *.onnx
 notes.txt
 bench.py
+out/dummy.py
 
 .DS_Store
