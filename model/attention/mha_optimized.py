@@ -12,7 +12,7 @@ class MultiHeadAttentionOptimized(nn.Module):
         assert config.n_embd % config.n_head == 0
         self.n_head = config.n_head
         self.head_dim = config.n_embd // config.n_head
-        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len, device="cpu")
+        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len)
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
@@ -20,11 +20,11 @@ class MultiHeadAttentionOptimized(nn.Module):
         self.v_cache = None
         self.cache_pos = 0
 
-        self.q_proj = nn.Linear(config.n_embd, config.n_embd)
-        self.k_proj = nn.Linear(config.n_embd, config.n_embd)
-        self.v_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.k_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.v_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.register_buffer('tril', torch.tril(torch.ones(config.block_size, config.block_size)))
-        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, use_cache):

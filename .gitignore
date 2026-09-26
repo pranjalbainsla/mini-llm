@@ -12,3 +12,7 @@ bench.py
 checkpoints/
 
 .DS_Store
+
+moe_mla_sizing.ipynb
+moe_scaling_laws.ipynb
+experiments.ipynb

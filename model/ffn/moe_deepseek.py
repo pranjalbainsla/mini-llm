@@ -6,11 +6,16 @@ class Expert(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(config.n_embd, 4 * config.n_embd),
+            nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias),
             nn.GELU(),
-            nn.Linear(4 * config.n_embd, config.n_embd),
+            nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias),
             nn.Dropout(config.dropout),
         )
+        # TODO: add moe_intermediate_size config knob to introduce DeepSeekMoe's
+        # "fine grained expert segmentation" (which is the idea that as as num_experts
+        # goes up, we deliberately shrink each expert's hidden dim so that P_total (model size) 
+        # doesn't explode and each expert specializes on a narrower slice of behavior)
+        # Note: Refer moe_scaling_practice.ipynb (point 3 - granularity) for theory/math
 
     def forward(self, x):
         return self.net(x)

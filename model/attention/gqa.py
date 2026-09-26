@@ -9,18 +9,16 @@ class GroupedQueryAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
 
+        self.config = config
+        
         assert config.n_embd % config.n_head == 0
         assert config.n_head % config.n_kv_heads == 0
-
-        self.n_head = config.n_head
         self.head_dim = config.n_embd // config.n_head
-        self.n_kv_heads = config.n_kv_heads
         self.repeat = config.n_head // config.n_kv_heads
 
         cos, sin = precompute_freqs(
             self.head_dim,
-            config.max_seq_len,
-            device="cpu",
+            config.max_seq_len
         )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
@@ -29,15 +27,9 @@ class GroupedQueryAttention(nn.Module):
         self.v_cache = None
         self.cache_pos = 0
 
-        self.q_proj = nn.Linear(config.n_embd, config.n_embd)
-        self.k_proj = nn.Linear(
-            config.n_embd,
-            config.n_kv_heads * self.head_dim,
-        )
-        self.v_proj = nn.Linear(
-            config.n_embd,
-            config.n_kv_heads * self.head_dim,
-        )
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.k_proj = nn.Linear(config.n_embd, config.n_kv_heads * self.head_dim, bias=config.bias)
+        self.v_proj = nn.Linear(config.n_embd, config.n_kv_heads * self.head_dim, bias=config.bias)
 
         self.register_buffer(
             "tril",
@@ -45,13 +37,12 @@ class GroupedQueryAttention(nn.Module):
                 torch.ones(config.max_seq_len, config.max_seq_len)
             ),
         )
-
-        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, use_cache):
         B, T, C = x.shape
-        n, head_dim, n_kv_heads, repeat = self.n_head, self.head_dim, self.n_kv_heads, self.repeat
+
         if use_cache:
             start = self.cache_pos
         else:
@@ -62,9 +53,9 @@ class GroupedQueryAttention(nn.Module):
         K = self.k_proj(x) # (B, T, n_kv_heads * head_dim)
         V = self.v_proj(x) # (B, T, n_kv_heads * head_dim)
 
-        Q = Q.view(B, T, n, head_dim) # (B, T, n_head, head_dim)
-        K = K.view(B, T, n_kv_heads, head_dim) # (B, T, n_kv_heads, head_dim)
-        V = V.view(B, T, n_kv_heads, head_dim) # (B, T, n_kv_heads, head_dim)
+        Q = Q.view(B, T, self.config.n_head, self.head_dim) # (B, T, n_head, head_dim)
+        K = K.view(B, T, self.config.n_kv_heads, self.head_dim) # (B, T, n_kv_heads, head_dim)
+        V = V.view(B, T, self.config.n_kv_heads, self.head_dim) # (B, T, n_kv_heads, head_dim)
 
         Q = Q.transpose(1, 2) # (B, n_head, T, head_dim)
         K = K.transpose(1, 2) # (B, n_kv_heads, T, head_dim)
@@ -84,9 +75,9 @@ class GroupedQueryAttention(nn.Module):
             else:
                 self.k_cache = torch.cat([self.k_cache, K], dim=2)
                 self.v_cache = torch.cat([self.v_cache, V], dim=2)
-                if self.k_cache.size(2) > block_size:
-                    self.k_cache = self.k_cache[:, :, -block_size:, :]
-                    self.v_cache = self.v_cache[:, :, -block_size:, :]
+                if self.k_cache.size(2) > self.config.block_size:
+                    self.k_cache = self.k_cache[:, :, -self.config.block_size:, :]
+                    self.v_cache = self.v_cache[:, :, -self.config.block_size:, :]
         if use_cache:
             self.cache_pos += T
 
@@ -94,10 +85,10 @@ class GroupedQueryAttention(nn.Module):
         if use_cache:
             K = self.k_cache
             V = self.v_cache
-        K = K.repeat_interleave(repeat, dim=1)
-        V = V.repeat_interleave(repeat, dim=1)
+        K = K.repeat_interleave(self.repeat, dim=1)
+        V = V.repeat_interleave(self.repeat, dim=1)
 
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
+        wei = Q @ K.transpose(-2,-1) / math.sqrt(self.head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
         if not use_cache or T>1:
             wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)

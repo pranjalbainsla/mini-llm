@@ -6,9 +6,9 @@ class Expert(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(config.n_embd, 4 * config.n_embd),
+            nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias),
             nn.GELU(),
-            nn.Linear(4 * config.n_embd, config.n_embd),
+            nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias),
             nn.Dropout(config.dropout),
         )
 

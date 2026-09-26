@@ -16,4 +16,4 @@ class SwiGLU(nn.Module):
         gate = F.silu(self.gate(x))
         value = self.up(x)
 
-        return self.down(gate * value)
+        return self.down(gate * value), None
