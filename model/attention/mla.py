@@ -20,7 +20,6 @@ class MultiheadLatentAttention(nn.Module):
         cos, sin = precompute_freqs(
             self.head_dim,
             config.max_seq_len,
-            device="cpu",
         )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
@@ -28,21 +27,25 @@ class MultiheadLatentAttention(nn.Module):
         self.down = nn.Linear(
             config.n_embd,
             config.latent_kv_dim,
+            bias=config.bias,
         )
 
         self.up_k = nn.Linear(
             config.latent_kv_dim,
             config.n_head * self.head_dim,
+            bias=config.bias,
         )
 
         self.up_v = nn.Linear(
             config.latent_kv_dim,
             config.n_head * self.head_dim,
+            bias=config.bias,
         )
 
         self.q_proj = nn.Linear(
             config.n_embd,
             config.n_embd,
+            bias=config.bias,
         )
 
         self.register_buffer(
@@ -58,6 +61,7 @@ class MultiheadLatentAttention(nn.Module):
         self.proj = nn.Linear(
             config.n_embd,
             config.n_embd,
+            bias=config.bias,
         )
 
         self.dropout = nn.Dropout(config.dropout)

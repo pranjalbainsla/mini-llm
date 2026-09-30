@@ -12,15 +12,13 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         assert config.n_embd % config.n_head == 0
 
         self.n_head = config.n_head
-        self.dh = config.n_embd // config.n_head
-
-        self.dh_non_rotary = 3 * self.dh // 4
-        self.dh_rotary = self.dh - self.dh_non_rotary
+        self.dh = config.n_embd // config.n_head  # Dimension of each attention head
+        self.dh_rotary = int(self.dh * config.rotary_ratio)
+        self.dh_non_rotary = self.dh - self.dh_rotary
 
         cos, sin = precompute_freqs(
             self.dh_rotary,
             config.max_seq_len,
-            device="cpu",
         )
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
@@ -32,36 +30,43 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.down_proj_kv = nn.Linear(
             config.n_embd,
             config.latent_kv_dim,
+            bias=config.bias,
         )
 
         self.up_k = nn.Linear(
             config.latent_kv_dim,
             config.n_head * self.dh_non_rotary,
+            bias=config.bias,
         )
 
         self.k_rotary = nn.Linear(
             config.n_embd,
             self.dh_rotary,
+            bias=config.bias,
         )
 
         self.up_v = nn.Linear(
             config.latent_kv_dim,
             config.n_head * self.dh,
+            bias=config.bias,
         )
 
         self.down_proj_q = nn.Linear(
             config.n_embd,
             config.latent_q_dim,
+            bias=config.bias,
         )
 
         self.up_q = nn.Linear(
             config.latent_q_dim,
             config.n_head * self.dh_non_rotary,
+            bias=config.bias,
         )
 
         self.q_rotary = nn.Linear(
             config.latent_q_dim,
             config.n_head * self.dh_rotary,
+            bias=config.bias,
         )
 
         self.register_buffer(
@@ -77,6 +82,7 @@ class MultiheadLatentAttentionDeepSeek(nn.Module):
         self.proj = nn.Linear(
             config.n_embd,
             config.n_embd,
+            bias=config.bias,
         )
 
         self.dropout = nn.Dropout(config.dropout)

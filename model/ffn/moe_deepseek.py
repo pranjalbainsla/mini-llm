@@ -11,7 +11,7 @@ class Expert(nn.Module):
             nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias),
             nn.Dropout(config.dropout),
         )
-        # TODO: add moe_intermediate_size config knob to introduce DeepSeekMoe's
+        # TODO: add "expert_hidden" config knob to introduce DeepSeekMoe's
         # "fine grained expert segmentation" (which is the idea that as as num_experts
         # goes up, we deliberately shrink each expert's hidden dim so that P_total (model size) 
         # doesn't explode and each expert specializes on a narrower slice of behavior)
@@ -30,7 +30,7 @@ class MoEDeepSeek(nn.Module):
         self.k = config.k
         self.target_fraction = config.k / config.num_experts
         self.bias_update_speed = config.bias_update_speed
-        self.router = nn.Linear(config.n_embd, config.num_experts)
+        self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
         self.experts = nn.ModuleList(
             [Expert(config) for _ in range(config.num_experts)]
         )

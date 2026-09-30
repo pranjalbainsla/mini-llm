@@ -31,10 +31,13 @@ class MLADeepSeekOptimized(nn.Module):
         # Shared rotary key is broadcast to every head.
         self.k_rotary = nn.Linear(config.n_embd, self.dh_rotary, bias=config.bias)
         self.q_rotary = nn.Linear(config.latent_q_dim, config.n_head * self.dh_rotary, bias=config.bias)
+        
         self.up_k = nn.Linear(config.latent_kv_dim, config.n_head * self.dh_non_rotary,bias=config.bias)
         self.up_v = nn.Linear(config.latent_kv_dim, config.n_head * self.dh,bias=config.bias)
         self.up_q = nn.Linear(config.latent_q_dim, config.n_head * self.dh_non_rotary,bias=config.bias)        
+        
         self.register_buffer("tril", torch.tril(torch.ones(config.max_seq_len, config.max_seq_len)))
+        
         self.out_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 

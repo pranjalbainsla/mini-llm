@@ -20,7 +20,7 @@ class MoE(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.router = nn.Linear(config.n_embd, config.num_experts)
+        self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
         self.experts = nn.ModuleList(
             [Expert(config.n_embd) for _ in range(config.num_experts)]
         )
