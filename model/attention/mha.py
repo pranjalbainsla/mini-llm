@@ -43,14 +43,14 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.head_dim = config.n_embd // config.n_head
-        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len)
+        cos, sin = precompute_freqs(self.head_dim, config.block_size)
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
         self.heads = nn.ModuleList([Head(config) for _ in range(config.n_head)])
         self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         out = torch.cat([h(x, self.cos, self.sin) for h in self.heads], dim=-1) # concatenate over the channel dimension
         out = self.dropout(self.proj(out)) # (B, T, num_heads * head_dim) -> (B, T, n_embd)
         return out

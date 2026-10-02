@@ -15,16 +15,14 @@ class MLADeepSeekOptimized(nn.Module):
         self.dh_rotary = int(self.dh * config.rotary_ratio)
         self.dh_non_rotary = self.dh - self.dh_rotary
 
-        cos, sin = precompute_freqs(
-            self.dh_rotary,
-            config.max_seq_len
-        )
+        cos, sin = precompute_freqs(self.dh_rotary, config.block_size)
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
         self.kv_cache = None
         self.kr_cache = None
         self.cache_pos = 0
+        self.block_size = config.block_size
 
         self.down_proj_kv = nn.Linear(config.n_embd, config.latent_kv_dim, bias=config.bias)
         self.down_proj_q = nn.Linear(config.n_embd, config.latent_q_dim, bias=config.bias)
@@ -36,12 +34,13 @@ class MLADeepSeekOptimized(nn.Module):
         self.up_v = nn.Linear(config.latent_kv_dim, config.n_head * self.dh,bias=config.bias)
         self.up_q = nn.Linear(config.latent_q_dim, config.n_head * self.dh_non_rotary,bias=config.bias)        
         
-        self.register_buffer("tril", torch.tril(torch.ones(config.max_seq_len, config.max_seq_len)))
+        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
         
         self.out_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, use_cache, use_weight_absorption):
+    def forward(self, x, use_cache=False, use_weight_absorption=False, **kwargs):
         B, T, C = x.shape
 
         # ------------------- compress inputs -------------------------
@@ -58,9 +57,9 @@ class MLADeepSeekOptimized(nn.Module):
                 self.kv_cache = torch.cat([self.kv_cache, ckv], dim=1) # (B, L, latent_kv_dim)
                 self.kr_cache = torch.cat([self.kr_cache, K_rope], dim=1) # (B, L, dh_rotary)
                 
-                if self.kv_cache.size(1) > block_size:
-                    self.kv_cache = self.kv_cache[:, -block_size:, :] # (B, T, latent_kv_dim)
-                    self.kr_cache = self.kr_cache[:, -block_size:, :] # (B, T, dh_rotary)
+                if self.kv_cache.size(1) > self.block_size:
+                    self.kv_cache = self.kv_cache[:, -self.block_size:, :] # (B, T, latent_kv_dim)
+                    self.kr_cache = self.kr_cache[:, -self.block_size:, :] # (B, T, dh_rotary)
 
 
         # ---------------------- apply RoPE ---------------------------

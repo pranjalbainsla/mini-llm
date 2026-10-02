@@ -10,9 +10,9 @@ class MultiHeadAttentionOptimized(nn.Module):
 
         super().__init__()
         assert config.n_embd % config.n_head == 0
-        self.n_head = config.n_head
         self.head_dim = config.n_embd // config.n_head
-        cos, sin = precompute_freqs(self.head_dim, config.max_seq_len)
+        self.block_size = config.block_size
+        cos, sin = precompute_freqs(self.head_dim, config.block_size)
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
@@ -27,9 +27,9 @@ class MultiHeadAttentionOptimized(nn.Module):
         self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, use_cache):
+    def forward(self, x, use_cache=False, **kwargs):
         B, T, C = x.shape
-        n, head_dim = self.n_head, self.head_dim
+   
         if use_cache:
             start = self.cache_pos
         else:
@@ -42,9 +42,9 @@ class MultiHeadAttentionOptimized(nn.Module):
         V = self.v_proj(x)
 
         # (B, T, n_head, head_dim)
-        Q = Q.view(B, T, n, head_dim)
-        K = K.view(B, T, n, head_dim)
-        V = V.view(B, T, n, head_dim)
+        Q = Q.view(B, T, -1, self.head_dim)
+        K = K.view(B, T, -1, self.head_dim)
+        V = V.view(B, T, -1, self.head_dim)
 
         # (B, n_head, T, head_dim)
         Q = Q.transpose(1, 2)
@@ -67,9 +67,9 @@ class MultiHeadAttentionOptimized(nn.Module):
                 # Keep only the last block_size tokens.
                 # The model was trained with a context window of block_size, so letting the
                 # cache grow beyond this hurts generation quality.
-                if self.k_cache.size(2) > block_size:
-                    self.k_cache = self.k_cache[:, :, -block_size:, :]
-                    self.v_cache = self.v_cache[:, :, -block_size:, :]
+                if self.k_cache.size(2) > self.block_size:
+                    self.k_cache = self.k_cache[:, :, -self.block_size:, :]
+                    self.v_cache = self.v_cache[:, :, -self.block_size:, :]
         if use_cache:
             self.cache_pos += T
         
@@ -77,7 +77,7 @@ class MultiHeadAttentionOptimized(nn.Module):
         if use_cache:
             K = self.k_cache
             V = self.v_cache
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
+        wei = Q @ K.transpose(-2,-1) / math.sqrt(self.head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
         if not use_cache or T>1:
             # don't need mask for generation (generating one token at a time)
             wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)

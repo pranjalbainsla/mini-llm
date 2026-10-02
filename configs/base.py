@@ -4,7 +4,7 @@
 
 # Training
 batch_size = 16
-block_size = 32                      
+block_size = 128                     
 max_iters = 5000
 learning_rate = 1e-3
 eval_interval = 250                   # was 100 — at eval_iters=200 that made eval ~4x costlier than training
@@ -40,6 +40,3 @@ alpha = 0.001                         # auxiliary load-balancing loss coefficien
 # Regularization / numerical stability
 rmsnorm_eps = 1e-5
 dropout = 0.0
-
-# Inference
-max_seq_len = 4096

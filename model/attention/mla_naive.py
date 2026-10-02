@@ -17,58 +17,22 @@ class MultiheadLatentAttention(nn.Module):
         self.kv_cache = None
         self.cache_pos = 0
 
-        cos, sin = precompute_freqs(
-            self.head_dim,
-            config.max_seq_len,
-        )
+        cos, sin = precompute_freqs(self.head_dim, config.block_size)
         self.register_buffer("cos", cos)
         self.register_buffer("sin", sin)
 
-        self.down = nn.Linear(
-            config.n_embd,
-            config.latent_kv_dim,
-            bias=config.bias,
-        )
+        self.down = nn.Linear(config.n_embd, config.latent_kv_dim, bias=config.bias)
+        self.up_k = nn.Linear(config.latent_kv_dim, config.n_head * self.head_dim, bias=config.bias)
+        self.up_v = nn.Linear(config.latent_kv_dim, config.n_head * self.head_dim, bias=config.bias)
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
 
-        self.up_k = nn.Linear(
-            config.latent_kv_dim,
-            config.n_head * self.head_dim,
-            bias=config.bias,
-        )
+        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
 
-        self.up_v = nn.Linear(
-            config.latent_kv_dim,
-            config.n_head * self.head_dim,
-            bias=config.bias,
-        )
-
-        self.q_proj = nn.Linear(
-            config.n_embd,
-            config.n_embd,
-            bias=config.bias,
-        )
-
-        self.register_buffer(
-            "tril",
-            torch.tril(
-                torch.ones(
-                    config.max_seq_len,
-                    config.max_seq_len,
-                )
-            ),
-        )
-
-        self.proj = nn.Linear(
-            config.n_embd,
-            config.n_embd,
-            bias=config.bias,
-        )
-
+        self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, use_cache):
+    def forward(self, x, use_cache=False, **kwargs):
         B, T, C = x.shape
-        n, head_dim = self.n_head, self.head_dim
 
         Q = self.q_proj(x) # (B, T, C)
         latent = self.down(x)
@@ -86,9 +50,9 @@ class MultiheadLatentAttention(nn.Module):
         
         L = K.size(1)
 
-        Q = Q.view(B, T, n, head_dim) # (B, T, n_head, head_dim)
-        K = K.view(B, L, n, head_dim) # (B, L, n_head, head_dim)
-        V = V.view(B, L, n, head_dim) # (B, L, n_head, head_dim)
+        Q = Q.view(B, T, -1, self.head_dim) # (B, T, n_head, head_dim)
+        K = K.view(B, L, -1, self.head_dim) # (B, L, n_head, head_dim)
+        V = V.view(B, L, -1, self.head_dim) # (B, L, n_head, head_dim)
 
         Q = Q.transpose(1, 2) # (B, n_head, T, head_dim)
         K = K.transpose(1, 2) # (B, n_head, L, head_dim)
@@ -111,7 +75,7 @@ class MultiheadLatentAttention(nn.Module):
         if use_cache:
             self.cache_pos += T
         
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
+        wei = Q @ K.transpose(-2,-1) / math.sqrt(self.head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
         if not use_cache or T>1:
             wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)
         wei = F.softmax(wei, dim=-1) # (B, H, T, T)

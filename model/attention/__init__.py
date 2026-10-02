@@ -1,8 +1,8 @@
 from .mha import MultiHeadAttention
 from .mha_optimized import MultiHeadAttentionOptimized
 from .gqa import GroupedQueryAttention
-from .mla_deepseek import MultiheadLatentAttentionDeepSeek
-from .mla_deepseek_optimized import MLADeepSeekOptimized
+from .mla_without_weight_absorption import MultiheadLatentAttentionDeepSeek
+from .mla_with_weight_absorption import MLADeepSeekOptimized
 
 
 ATTENTION_REGISTRY = {
