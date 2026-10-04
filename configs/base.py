@@ -5,14 +5,18 @@
 # Training
 batch_size = 16
 block_size = 128                     
-max_iters = 5000
+max_iters = 2000
 learning_rate = 1e-3
-eval_interval = 250                   # was 100 — at eval_iters=200 that made eval ~4x costlier than training
-eval_iters = 40                       # 40 batches is enough to estimate loss on a dataset this small
-log_interval = 20                     # per-iter loss print, cheap sanity check that loss is moving
+eval_interval = 200                  
+eval_iters = 200                      
+log_interval = 20
+
+init_seed = 1337
+train_seed = 1337
+eval_seed = 4242                
 
 # Model
-n_embd = 64
+n_embd = 128
 n_head = 4
 n_layer = 4
 n_kv_heads = 2                        

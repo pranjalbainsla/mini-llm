@@ -70,7 +70,6 @@ class MultiHeadAttentionOptimized(nn.Module):
                 if self.k_cache.size(2) > self.block_size:
                     self.k_cache = self.k_cache[:, :, -self.block_size:, :]
                     self.v_cache = self.v_cache[:, :, -self.block_size:, :]
-        if use_cache:
             self.cache_pos += T
         
         # attention

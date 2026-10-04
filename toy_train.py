@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import torch
 
-from data.dataset import get_batch, vocab_size, chars
+from data.dataset import get_batch, make_generator, vocab_size, chars
 from model.gpt_moe import GPT
 
 # -----------------------------------------------------------------------------
@@ -36,7 +36,6 @@ out_dir = 'out'
 init_from = 'scratch'            # 'scratch' or 'resume'
 eval_only = False                # if True, run a single eval pass and exit (sanity check)
 always_save_checkpoint = False   # if True, save every eval, not just on val-loss improvement
-log_interval = 10                # print train loss every N iters (cheap — just loss.item())
 
 # optimizer knobs (nanoGPT-standard AdamW settings; override in config to sweep)
 weight_decay = 1e-1
@@ -44,11 +43,6 @@ beta1 = 0.9
 beta2 = 0.95
 grad_clip = 1.0                  # clip grad norm; set to 0.0 to disable
 
-# model defaults. Block/attention/MoE code may not read `bias`/`dropout` yet,
-# but they're forwarded via `config` regardless so nothing here 
-# needs to change as you wire more of the model up.
-bias = False # TODO: 
-dropout = 0.0
 # -----------------------------------------------------------------------------
 # system
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -67,7 +61,8 @@ config = {k: globals()[k] for k in config_keys}
 tokens_per_iter = batch_size * block_size
 print(f"tokens per iteration will be: {tokens_per_iter:,}")
 # -----------------------------------------------------------------------------
-torch.manual_seed(1337)
+torch.manual_seed(init_seed)
+train_gen = make_generator(train_seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 device_type = 'cuda' if 'cuda' in device else 'cpu'
@@ -148,8 +143,9 @@ def estimate_loss():
     model.eval()
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
+        eval_gen = make_generator(eval_seed) 
         for i in range(eval_iters):
-            X, Y = get_batch(split, batch_size, block_size, device)
+            X, Y = get_batch(split, batch_size, block_size, device, eval_gen)
             with ctx:
                 logits, loss, _ = model(X, Y)  # third return is per-layer MoE routing info
             losses[i] = loss.item()
@@ -158,7 +154,7 @@ def estimate_loss():
     return out
 # -----------------------------------------------------------------------------
 # training loop
-X, Y = get_batch('train', batch_size, block_size, device)  # fetch the very first batch
+X, Y = get_batch('train', batch_size, block_size, device, train_gen)  # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0
 raw_model = model   # separate name so this still works if you later wrap
@@ -197,7 +193,7 @@ while True:
         logits, loss, routing_info = model(X, Y)
     # prefetch next batch on CPU while the forward pass above is still queued
     # asynchronously on the GPU — cheap overlap, standard nanoGPT trick.
-    X, Y = get_batch('train', batch_size, block_size, device)
+    X, Y = get_batch('train', batch_size, block_size, device, train_gen)
 
     # scaler.scale(loss) is a harmless multiply-by-1 when the scaler is
     # disabled (bf16/fp32 runs), so this path is correct for every dtype

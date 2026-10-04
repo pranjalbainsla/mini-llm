@@ -9,7 +9,7 @@ class GPT(nn.Module):
     def __init__(self, vocab_size, config):
         super().__init__()
 
-        self.config = config
+        self.block_size = config.block_size
 
         self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
         # Positional embeddings live inside the attention layer
@@ -45,12 +45,13 @@ class GPT(nn.Module):
         for block in self.blocks:
           if hasattr(block.attn, "reset_cache"):
             block.attn.reset_cache()
-
+            
+    @torch.no_grad()
     def generate(self, idx, max_new_tokens, use_cache=False, use_weight_absorption=False, temperature=1.0, top_k=None):
         self.reset_cache()
 
         # if the sequence context is growing too long we must crop it at block_size
-        idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
+        idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
 
         logits, _, _ = self(idx_cond, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
@@ -64,8 +65,14 @@ class GPT(nn.Module):
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, idx_next), dim=1)
+            # note: Avoid repeated torch.cat since every gen step reallocates memory. 
+            # Instead, pre-allocate a buffer of size (B, T+max_new_tokens) and write into it.
 
-            logits, _, _ = self(idx_next, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
+            if use_cache:
+                idx_cond = idx_next
+            else:
+                idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
+            logits, _, _ = self(idx_cond, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
         return idx
 
