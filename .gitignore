@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 .env
+*.bak
 
 onnx/
 *.onnx
@@ -12,5 +13,5 @@ bench.py
 checkpoints/
 
 .DS_Store
-
-index.md
+index.mdout/
+results/*.log

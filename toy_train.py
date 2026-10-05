@@ -3,7 +3,7 @@ A minimal training loop for gpt_moe.py
 
 Usage:
     python toy_train.py config/base.py
-    python toy_train.py config/base.py --max_iters=2000 --n_layer=6   # CLI overrides too
+    python toy_train.py config/base.py --max_iters=2000 --n_layer=6   # CLI overrides
 
 Design intent: GPT takes a single `config` object and pulls whatever
 attributes it needs off it (config.n_embd, config.alpha, ...). We build that
@@ -13,6 +13,7 @@ add the field to your config file and read it from `config` wherever you
 need it in the model.
 """
 import os
+import json
 import time
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -32,10 +33,9 @@ from model.gpt_moe import GPT
 # (re-wget/upload that file) — it doesn't need a config entry, and vocab_size
 # is derived straight from whatever's in that file, never hand-set.
 
-out_dir = 'out'
-init_from = 'scratch'            # 'scratch' or 'resume'
 eval_only = False                # if True, run a single eval pass and exit (sanity check)
-always_save_checkpoint = False   # if True, save every eval, not just on val-loss improvement
+run_name = ''                    # if set, write results/<run_name>.json (curves, best val, params, sec/iter) at the end
+results_dir = 'results'
 
 # optimizer knobs (nanoGPT-standard AdamW settings; override in config to sweep)
 weight_decay = 1e-1
@@ -53,7 +53,7 @@ dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported
 # config_keys is captured AFTER configurator.py runs, so it picks up every
 # variable the config file defines (batch_size, n_layer, num_experts, ...),
 # not just the defaults declared above. This dict is used both for the
-# checkpoint's logged config AND to build the model's config object below.
+# results JSON's logged config AND to build the model's config object below.
 exec(open('configurator.py').read())
 config_keys = [k for k, v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 config = {k: globals()[k] for k in config_keys}
@@ -78,67 +78,30 @@ scaler = torch.amp.GradScaler(device_type, enabled=(dtype == 'float16' and devic
 
 # -----------------------------------------------------------------------------
 iter_num = 0
-best_val_loss = 1e9
 # -----------------------------------------------------------------------------
-# model init
-# Keys that determine parameter *shapes* in the current model — these MUST
-# match the checkpoint on resume, or load_state_dict fails (or worse, loads
-# tensors into a differently-shaped model at the wrong layer). Only n_embd/
-# n_head/n_layer actually affect shapes in the GPT/Block as of now.
-# Extend this list as you wire more of the config into Block/attention/MoE
-# (e.g. once num_experts changes parameter counts, add it here too).
-STRUCTURAL_KEYS = ['n_embd', 'n_head', 'n_layer']
-
-if init_from == 'scratch':
-    print("Initializing a new model from scratch")
-
-elif init_from == "resume":
-    print(f"Resuming training from {out_dir}")
-
-    base_ckpt = next(
-        (f for f in os.listdir(out_dir) if f.startswith("base_") and f.endswith(".pt")),
-        None,
-    )
-    ckpt_name = base_ckpt if base_ckpt else "ckpt.pt"
-    ckpt_path = os.path.join(out_dir, ckpt_name)
-
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    checkpoint_config = checkpoint["config"]
-
-    for key in STRUCTURAL_KEYS:
-        if config.get(key) != checkpoint_config.get(key):
-            print(f"resume: overriding config.{key}={config.get(key)!r} -> "
-                  f"{checkpoint_config[key]!r} (shape-critical, taken from checkpoint)")
-        config[key] = checkpoint_config[key]
-
-    # everything else (learning_rate, max_iters, eval_interval, batch_size, ...)
-    # is intentionally left as whatever the current config file / CLI says,
-    # so you can resume with tweaked training-loop settings on the same model.
-    vocab_size = checkpoint['vocab_size']
-
+# model init (always from scratch; this script is for experiments, not checkpointing)
+print("Initializing a new model from scratch")
 # GPT reads whatever attributes it needs off this object (config.n_embd,
 # config.alpha, ...) — passing the full dict through means no per-field
 # wiring to maintain here as gpt_moe.py grows. Harmless: GPT ignores fields
-# it doesn't look up (e.g. learning_rate, out_dir).
+# it doesn't look up (e.g. learning_rate, run_name).
 model_config = SimpleNamespace(**config)
 model = GPT(vocab_size, model_config)
 
-if init_from == 'resume':
-    model.load_state_dict(checkpoint['model'])
-    iter_num = checkpoint['iter_num']
-    best_val_loss = checkpoint['best_val_loss']
-
 model.to(device)
+n_params = sum(p.numel() for p in model.parameters())
+print(f"params: {n_params:,}")
 # -----------------------------------------------------------------------------
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate,
                                betas=(beta1, beta2), weight_decay=weight_decay)
-if init_from == 'resume':
-    optimizer.load_state_dict(checkpoint['optimizer'])
-checkpoint = None  # free up memory
 # -----------------------------------------------------------------------------
+history = []      # one entry per eval: {iter, train, val}
+eval_time = 0.0   # wall time spent inside estimate_loss, excluded from sec/iter
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
+    global eval_time
+    t_start = time.time()
     out = {}
     model.eval()
     for split in ['train', 'val']:
@@ -151,11 +114,13 @@ def estimate_loss():
             losses[i] = loss.item()
         out[split] = losses.mean()
     model.train()
+    eval_time += time.time() - t_start
     return out
 # -----------------------------------------------------------------------------
 # training loop
 X, Y = get_batch('train', batch_size, block_size, device, train_gen)  # fetch the very first batch
 t0 = time.time()
+t_run_start = t0
 local_iter_num = 0
 raw_model = model   # separate name so this still works if you later wrap
                     # `model` in DDP or torch.compile without touching the loop
@@ -164,25 +129,7 @@ while True:
     if iter_num % eval_interval == 0:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-
-        if losses['val'] < best_val_loss or always_save_checkpoint:
-            best_val_loss = losses['val']
-            if iter_num > 0:
-                checkpoint = {
-                    'model': raw_model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'config': config,           # plain dict -> rebuilt into model_config on resume
-                    'vocab_size': vocab_size,
-                    'iter_num': iter_num,
-                    'best_val_loss': best_val_loss,
-                }
-                print(f"saving checkpoint to {out_dir}")
-                os.makedirs(out_dir, exist_ok=True)
-                ckpt_name = f"base_n{config["n_layer"]}_h{config["n_head"]}_d{config["n_embd"]}.pt"
-                torch.save(checkpoint, os.path.join(out_dir, ckpt_name)) # e.g. out/base_n4_h4_d128.pt
-                # Note: two runs with the same architecture will overwrite the same checkpoint. 
-                # Add a run ID or timestamp if you want to preserve both 
-                # TODO: add best/latest split
+        history.append({'iter': iter_num, 'train': losses['train'].item(), 'val': losses['val'].item()})
 
     if iter_num == 0 and eval_only:
         break
@@ -223,3 +170,23 @@ while True:
     if iter_num > max_iters:
         break
 # -----------------------------------------------------------------------------
+# results logging
+if run_name and not eval_only:
+    if device_type == 'cuda':
+        torch.cuda.synchronize()
+    best = min(history, key=lambda h: h['val'])
+    result = {
+        'run_name': run_name,
+        'init_seed': init_seed, 'train_seed': train_seed, 'eval_seed': eval_seed,
+        'best_val': best['val'], 'best_iter': best['iter'],
+        'train_at_best': best['train'], 'gap_at_best': best['val'] - best['train'],
+        'final_val': history[-1]['val'], 'final_train': history[-1]['train'],
+        'params': n_params,
+        'sec_per_iter': (time.time() - t_run_start - eval_time) / iter_num,
+        'history': history,
+        'config': config,
+    }
+    os.makedirs(results_dir, exist_ok=True)
+    with open(os.path.join(results_dir, f"{run_name}.json"), 'w') as f:
+        json.dump(result, f, indent=1)
+    print(f"wrote {results_dir}/{run_name}.json")
