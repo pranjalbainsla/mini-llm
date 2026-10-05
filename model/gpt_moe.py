@@ -32,10 +32,8 @@ class GPT(nn.Module):
         if targets is None:
             total_loss = None
         else:
-            B, T, C = logits.shape
-            logits = logits.view(B*T, C)
-            targets = targets.view(B*T)
-            total_loss = F.cross_entropy(logits, targets)
+            # flatten only for the loss; `logits` itself stays (B,T,vocab_size)
+            total_loss = F.cross_entropy(logits.view(B*T, -1), targets.view(B*T))
             if total_aux is not None:
                 total_loss = total_loss + self.config.alpha * total_aux
 
