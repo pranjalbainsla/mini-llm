@@ -47,11 +47,21 @@ Ran the baseline config over 5 seeds; init_seed and train_seed move together; ev
 - The gap (val minus train) shows how much the model is overfitting, and its tiny spread (±0.006) means a variant whose gap moves clearly outside 0.206 changed how it generalizes, which tells you whether a val-loss win came from fitting better or from overfitting less.
 - Three seeds peaked at iter 2000 and seeds 2 and 5 at 1800, so the runs are still improving slightly at the end of 2000 iterations.
 ___
-Baseline: [mlp mha layernorm rope], lr=1e-3, 2000 iters, bias=True, 810,049 params
+Base config: [mha + mlp + layernorm] lr=1e-3 max_iters=2000 
 
-1. RMSNorm
-* Hypothesis: RMSNorm skips mean-centering and the bias term, so it may lower ms/iter, but I'm expecting not much diff in best val loss at this scale.
-* Config: [mlp mha rmsnorm rope], all else as baseline 
-* Results (seed 1, bias=True): best val 1.6368 vs 1.6355 same-seed baseline (+0.0013, well under 1 std = 0.0098), gap 0.208 (baseline 0.203 +/- 0.005), 808,897 params, ~48.5 ms/iter.
-* Takeaway: no detectable loss difference from LayerNorm (within seed noise); speed is unresolved.
-* Caveats: single-seed screen; ms/iter was measured in a different session than the baseline, so no speed comparison; RMSNorm is hand-written and unfused, so any speed gain is understated
+| tag | seeds | best val | delta | best iter | gap | params | ms/iter | gpu | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline_colab | 1 | 1.6355 | -0.0012 (-0.2 std) | 2000 | 0.209 | 810,049 | 47.7 | Tesla T4 | noise |
+| rmsnorm | 1 | 1.6368 | +0.0000 (+0.0 std) | 2000 | 0.208 | 808,897 | 50.5 | Tesla T4 | noise | 
+
+
+1) RMS norm
+* Hypothesis: <1 std, slightly faster than layernorm (ms/iter) since it skips mean-centering and the bias term
+* Config: --norm=rmsnorm, all else as baseline
+* Results (seed 1): best val 1.6368 vs baseline 1.6368 (+0.0000, +0.0 std), best iter 2000, gap 0.208, 808,897 params, 50.5 ms/iter on Tesla T4
+* Verdict: noise
+* Takeaway: RMSNorm matches LayerNorm on val loss (noise) with 1,152 fewer params, but my unfused implementation is ~6% slower on a T4. Quality-neutral, no speed win without a fused kernel.
+
+2) Normalization vs no normalization
+TODO: Add identity to NORM_REGISTRY (lambda config: nn.Identity()), so --norm=identity removes every norm including ln_f. Then run an LR sweep {3e-4, 1e-3, 3e-3, 1e-2} for layernorm vs identity, one seed each.
+
