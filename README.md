@@ -44,18 +44,32 @@
 │       ├── layernorm.py                # LayerNorm implemention
 │       └── rmsnorm.py                  # RMSNorm implementation
 │
-├── notebooks/
-│   ├── moe_mla_sizing.ipynb            # MoE / MLA parameter and memory sizing
-│   └── moe_scaling_practice.ipynb      # MoE scaling practice notebook
-│
 ├── train.py                            # Main training loop, evaluation and checkpointing
 ├── toy_train.py                        # Simplified training script for quick experiments
-│
-├── profiler.py                         # PyTorch profiling (example script, TODO: read more about profiling)
-├── configurator.py                     # CLI configuration overrides
 ├── sample.py                           # Text generation from a checkpoint (main script)
-├── generate.py                         # Minimal generation script, kept for understanding
-├── export.py                           # ONNX model export
+├── configurator.py                     # CLI configuration overrides (exec'd by the entry points above)
+│
+├── experiments/                        # Ablation tooling; run from the repo root
+│   ├── run_seeds.sh                    # One config over several seeds
+│   ├── ablate.py                       # Resumable queue runner for Colab, syncs results/ to Drive
+│   ├── summarize.py                    # One summary row + verdict per tag, log-entry skeleton, plot
+│   └── plot_seeds.py                   # Per-seed strip plot against the baseline noise band
+│
+├── scripts/
+│   ├── sanity.py                       # Shape / gradient / causality / overfit checks
+│   ├── profiler.py                     # PyTorch profiling (example script, TODO: read more about profiling)
+│   └── legacy/                         # Stale: import modules that no longer exist (model.gpt, config)
+│       ├── generate.py                 # Minimal generation script, kept for understanding
+│       └── export.py                   # ONNX model export
+│
+├── results/                            # Per-run JSON + logs (<tag>_s<seed>.json, <tag>.hyp.json)
+├── plots/                              # Generated figures
+├── docs/
+│   ├── log.md                          # Experiment log (hypothesis / config / results / takeaway)
+│   ├── index.md                        # Codebase index
+│   └── notebooks/
+│       ├── moe_mla_sizing.ipynb        # MoE / MLA parameter and memory sizing
+│       └── moe_scaling_practice.ipynb  # MoE scaling practice notebook
 │
 ├── licenses/
 │   └── nanogpt_LICENSE

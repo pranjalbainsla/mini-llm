@@ -2,7 +2,7 @@
 Best val loss per seed. x = seed, y = best val loss. First tag = reference: its points,
 mean line and ±1 / ±2 std bands. Extra tags are overlaid at the same seeds, so each
 variant point sits next to the baseline point it is paired with.
-Usage: python plot_seeds.py baseline [gqa mla ...]   -> plots/seed_strip.png
+Usage: python experiments/plot_seeds.py baseline [gqa mla ...]   -> plots/seed_strip.png
 Needs: numpy, matplotlib (pip install matplotlib)
 """
 import glob, json, sys

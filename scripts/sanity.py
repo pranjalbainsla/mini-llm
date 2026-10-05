@@ -2,7 +2,7 @@
 Scratch sanity checks for the custom GPT stack. NOT part of the trainer.
 
 Run from the repo root, same args as toy_train.py:
-    python sanity.py configs/base.py --attention='gqa' --ffn='moe_deepseek'
+    python scripts/sanity.py configs/base.py --attention='gqa' --ffn='moe_deepseek'
 
 Checks:
   1. shapes + initial loss ~ ln(vocab_size)
@@ -11,10 +11,13 @@ Checks:
   4. overfit ONE fixed batch of 32 examples -> loss should go to ~0
 """
 import math
+import os
+import sys
 from types import SimpleNamespace
 
 import torch
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root, so data/ and model/ import
 from data.dataset import get_batch, make_generator, vocab_size
 from model.gpt_moe import GPT
 
