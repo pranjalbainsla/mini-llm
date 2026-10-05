@@ -21,7 +21,7 @@
 ```
 4) **LR sweep**
 <p align="center">
-  <img src="./plots/lr_sweep.png" alt="LR sweep">
+  <img src="../plots/lr_sweep.png" alt="LR sweep">
 </p>
 
 Ran the baseline at 3e-4 (Best val loss = 1.7375), 1e-3 (1.6388) and 3e-3 (1.6414). 3e-3 learns faster early, but 1e-3 catches up and edges ahead by the end, so 1e-3 is the safer baseline and I'm freezing it for all later ablations. **Note:** There's a generalization gap. Val sits about 0.2 above train in every run (e.g. 1.64 vs 1.43 for 1e-3), which is expected on a small char-level dataset.
@@ -40,7 +40,7 @@ Ran the baseline config over 5 seeds; init_seed and train_seed move together; ev
 | **mean ± std** | **1.6368 ± 0.0077** | | | 0.206 ± 0.006 | | 0.0533 |
 
 <p align="center">
-    <img src="./plots/seed_strip.png" alt="Baseline seed spread">
+    <img src="../plots/seed_strip.png" alt="Baseline seed spread">
 </p>
 
 - **Decision rule:** Baseline best val is 1.6368 ± 0.0077 over 5 seeds, so a variant is clearly different only if it lands outside the ±2 std band (about 1.621 to 1.652) and is noise if it stays within 1 std. In between, I'll rerun it at seeds 2-5 and count it only if the mean gap exceeds 2 std and the sign matches in at least 4 of 5 paired seeds.
