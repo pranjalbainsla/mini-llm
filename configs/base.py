@@ -26,7 +26,7 @@ bias = False
 # Architecture — flip these to test a different combination
 attention = "mha"
 ffn = "mlp"
-norm = "rmsnorm"
+norm = "layernorm"
 position = "rope"
 
 # MLA
