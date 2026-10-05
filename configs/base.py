@@ -11,8 +11,8 @@ eval_interval = 200
 eval_iters = 200                      
 log_interval = 20
 
-init_seed = 1337
-train_seed = 1337
+init_seed = 1
+train_seed = 1
 eval_seed = 4242                
 
 # Model

@@ -30,12 +30,17 @@ Ran the baseline at 3e-4 (Best val loss = 1.7375), 1e-3 (1.6388) and 3e-3 (1.641
 
 | seed | best val | best iter | train @ best | gap | params | sec/iter |
 |---|---|---|---|---|---|---|
-| 1 | | | | | | |
-| 2 | | | | | | |
-| 3 | | | | | | |
-| 4 | | | | | | |
-| 5 | | | | | | |
-| **mean ± std** | | | | | | |
+| 1 | 1.6239 | 2000 | 1.4258 | 0.198 | 805,441 | 0.0453 |
+| 2 | 1.6219 | 2000 | 1.4214 | 0.201 | 805,441 | 0.0445 |
+| 3 | 1.6363 | 2000 | 1.4287 | 0.208 | 805,441 | 0.0461 |
+| 4 | 1.6402 | 2000 | 1.4302 | 0.210 | 805,441 | 0.0447 |
+| 5 | 1.6437 | 1800 | 1.4431 | 0.201 | 805,441 | 0.0453 |
+| **mean ± std** | **1.6332 ± 0.0098** | | | 0.203 ± 0.005 | | 0.0452 |
 
+<p align="center">
+    <img src="./plots/seed_strip.png" alt="Baseline seed spread">
+</p>
 
-
+- **Decision rule:** Baseline best val is 1.6332 ± 0.0098 over 5 seeds, so a variant is clearly different only if it lands outside the ±2 std band (about 1.613 to 1.653) and is noise if it stays within 1 std. In between, I'll rerun it at seeds 2-5 and count it only if the mean gap exceeds 2 std and the sign matches in at least 4 of 5 paired seeds.
+- The gap (val minus train) shows how much the model is overfitting, and its tiny spread (±0.005) means a variant whose gap moves clearly outside 0.203 changed how it generalizes, which tells you whether a val-loss win came from fitting better or from overfitting less.
+- Four seeds peaked at iter 2000 and seed 5 at 1800, so the runs are still improving slightly at the end of 2000 iterations.

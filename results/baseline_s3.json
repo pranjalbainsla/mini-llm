@@ -1,0 +1,117 @@
+{
+ "run_name": "baseline_s3",
+ "init_seed": 3,
+ "train_seed": 3,
+ "eval_seed": 4242,
+ "best_val": 1.6363372802734375,
+ "best_iter": 2000,
+ "train_at_best": 1.4287261962890625,
+ "gap_at_best": 0.207611083984375,
+ "final_val": 1.6363372802734375,
+ "final_train": 1.4287261962890625,
+ "params": 805441,
+ "sec_per_iter": 0.04614180162630934,
+ "history": [
+  {
+   "iter": 0,
+   "train": 4.299314022064209,
+   "val": 4.301977634429932
+  },
+  {
+   "iter": 200,
+   "train": 2.0031399726867676,
+   "val": 2.053926706314087
+  },
+  {
+   "iter": 400,
+   "train": 1.7745758295059204,
+   "val": 1.9141944646835327
+  },
+  {
+   "iter": 600,
+   "train": 1.6671048402786255,
+   "val": 1.852399468421936
+  },
+  {
+   "iter": 800,
+   "train": 1.5909570455551147,
+   "val": 1.7775431871414185
+  },
+  {
+   "iter": 1000,
+   "train": 1.5515599250793457,
+   "val": 1.7381433248519897
+  },
+  {
+   "iter": 1200,
+   "train": 1.5121769905090332,
+   "val": 1.7114580869674683
+  },
+  {
+   "iter": 1400,
+   "train": 1.4856942892074585,
+   "val": 1.6879796981811523
+  },
+  {
+   "iter": 1600,
+   "train": 1.4619654417037964,
+   "val": 1.6632537841796875
+  },
+  {
+   "iter": 1800,
+   "train": 1.4432727098464966,
+   "val": 1.647100567817688
+  },
+  {
+   "iter": 2000,
+   "train": 1.4287261962890625,
+   "val": 1.6363372802734375
+  }
+ ],
+ "config": {
+  "vocab_size": 65,
+  "eval_only": false,
+  "run_name": "baseline_s3",
+  "results_dir": "results",
+  "weight_decay": 0.1,
+  "beta1": 0.9,
+  "beta2": 0.95,
+  "grad_clip": 1.0,
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "arg": "--run_name=baseline_s3",
+  "config_file": "configs/base.py",
+  "batch_size": 16,
+  "block_size": 128,
+  "max_iters": 2000,
+  "learning_rate": 0.001,
+  "eval_interval": 200,
+  "eval_iters": 200,
+  "log_interval": 20,
+  "init_seed": 3,
+  "train_seed": 3,
+  "eval_seed": 4242,
+  "n_embd": 128,
+  "n_head": 4,
+  "n_layer": 4,
+  "n_kv_heads": 2,
+  "bias": false,
+  "attention": "mha",
+  "ffn": "mlp",
+  "norm": "layernorm",
+  "position": "rope",
+  "latent_kv_dim": 32,
+  "latent_q_dim": 32,
+  "rotary_ratio": 0.25,
+  "num_experts": 4,
+  "num_shared_experts": 2,
+  "k": 2,
+  "gamma": 0.001,
+  "alpha": 0.001,
+  "rmsnorm_eps": 1e-05,
+  "dropout": 0.0,
+  "key": "run_name",
+  "val": "baseline_s3",
+  "attempt": "baseline_s3"
+ }
+}

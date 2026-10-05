@@ -1,0 +1,117 @@
+{
+ "run_name": "baseline_s4",
+ "init_seed": 4,
+ "train_seed": 4,
+ "eval_seed": 4242,
+ "best_val": 1.6402010917663574,
+ "best_iter": 2000,
+ "train_at_best": 1.4301806688308716,
+ "gap_at_best": 0.21002042293548584,
+ "final_val": 1.6402010917663574,
+ "final_train": 1.4301806688308716,
+ "params": 805441,
+ "sec_per_iter": 0.044701190664433406,
+ "history": [
+  {
+   "iter": 0,
+   "train": 4.3455023765563965,
+   "val": 4.353219032287598
+  },
+  {
+   "iter": 200,
+   "train": 2.0043749809265137,
+   "val": 2.0585596561431885
+  },
+  {
+   "iter": 400,
+   "train": 1.7724801301956177,
+   "val": 1.9025949239730835
+  },
+  {
+   "iter": 600,
+   "train": 1.6603169441223145,
+   "val": 1.8305021524429321
+  },
+  {
+   "iter": 800,
+   "train": 1.5949763059616089,
+   "val": 1.7683073282241821
+  },
+  {
+   "iter": 1000,
+   "train": 1.5456194877624512,
+   "val": 1.7352735996246338
+  },
+  {
+   "iter": 1200,
+   "train": 1.5117149353027344,
+   "val": 1.7024407386779785
+  },
+  {
+   "iter": 1400,
+   "train": 1.4883322715759277,
+   "val": 1.69004487991333
+  },
+  {
+   "iter": 1600,
+   "train": 1.467393398284912,
+   "val": 1.6755927801132202
+  },
+  {
+   "iter": 1800,
+   "train": 1.4445091485977173,
+   "val": 1.6587090492248535
+  },
+  {
+   "iter": 2000,
+   "train": 1.4301806688308716,
+   "val": 1.6402010917663574
+  }
+ ],
+ "config": {
+  "vocab_size": 65,
+  "eval_only": false,
+  "run_name": "baseline_s4",
+  "results_dir": "results",
+  "weight_decay": 0.1,
+  "beta1": 0.9,
+  "beta2": 0.95,
+  "grad_clip": 1.0,
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "arg": "--run_name=baseline_s4",
+  "config_file": "configs/base.py",
+  "batch_size": 16,
+  "block_size": 128,
+  "max_iters": 2000,
+  "learning_rate": 0.001,
+  "eval_interval": 200,
+  "eval_iters": 200,
+  "log_interval": 20,
+  "init_seed": 4,
+  "train_seed": 4,
+  "eval_seed": 4242,
+  "n_embd": 128,
+  "n_head": 4,
+  "n_layer": 4,
+  "n_kv_heads": 2,
+  "bias": false,
+  "attention": "mha",
+  "ffn": "mlp",
+  "norm": "layernorm",
+  "position": "rope",
+  "latent_kv_dim": 32,
+  "latent_q_dim": 32,
+  "rotary_ratio": 0.25,
+  "num_experts": 4,
+  "num_shared_experts": 2,
+  "k": 2,
+  "gamma": 0.001,
+  "alpha": 0.001,
+  "rmsnorm_eps": 1e-05,
+  "dropout": 0.0,
+  "key": "run_name",
+  "val": "baseline_s4",
+  "attempt": "baseline_s4"
+ }
+}
