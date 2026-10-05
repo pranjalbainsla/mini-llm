@@ -6,6 +6,12 @@
 A: They are kept as separate weights for now, which keeps the implementation simple and lets the output projection specialize independently of the input lookup. Untying adds a vocab × C matrix to the parameter count. The embedding is a lookup rather than a matmul, so it is normally excluded from "active" parameters anyway.
 Next: try weight tying and compare loss and parameter count at a matched budget, since tying is the usual choice at small scale.
 
+2) As of now, position = "rope" isn't wired to anything. Nothing in model/ or toy_train.py reads it. RoPE is hard-coded in the attention classes.
+TODO: Wire it up and compare with learned pos embeddings etc.
+
+3) Weight decay applies to everything. toy_train.py passes all parameters to AdamW with weight_decay=0.1, including norm weights, biases and embeddings. nanoGPT only decays the 2D weights.
+TODO: read about it.
+
 ### Attention
 
 1) **Q: Why does the current MLA implementation split each head's q/k dim `dh` into a non-rotary part and a rotary part, instead of adding RoPE dims on top like DeepSeek-V2?**

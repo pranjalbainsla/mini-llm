@@ -16,7 +16,7 @@ class GPT(nn.Module):
         # Positional embeddings live inside the attention layer
         self.blocks = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
         self.ln_f = build_norm(config)
-        self.lm_head = nn.Linear(config.n_embd, vocab_size)
+        self.lm_head = nn.Linear(config.n_embd, vocab_size, bias=config.bias)
 
     def forward(self, idx, targets=None, **kwargs):
         B, T = idx.shape
