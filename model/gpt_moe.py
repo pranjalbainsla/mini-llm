@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .block import Block
+from .builder import build_norm
 
 class GPT(nn.Module):
 
@@ -14,7 +15,7 @@ class GPT(nn.Module):
         self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
         # Positional embeddings live inside the attention layer
         self.blocks = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
-        self.ln_f = nn.LayerNorm(config.n_embd)
+        self.ln_f = build_norm(config)
         self.lm_head = nn.Linear(config.n_embd, vocab_size)
 
     def forward(self, idx, targets=None, **kwargs):

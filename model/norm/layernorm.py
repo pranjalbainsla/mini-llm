@@ -10,7 +10,7 @@ class LayerNorm1d(nn.Module):
         self.beta = nn.Parameter(torch.zeros(dim))
 
     def forward(self, x):
-        xmean = x.mean(1, keepdim=True) # batch mean
-        xvar = x.var(1, keepdim=True) # batch variance
+        xmean = x.mean(-1, keepdim=True) # across features
+        xvar = x.var(-1, keepdim=True)
         xhat = (x - xmean) / torch.sqrt(xvar + self.eps)
         return self.gamma * xhat + self.beta
