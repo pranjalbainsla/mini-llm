@@ -21,7 +21,7 @@ n_head = 4
 n_layer = 4
 n_kv_heads = 2                        
 
-bias = False                        
+bias = True                     
 
 # Architecture — flip these to test a different combination
 attention = "mha"
