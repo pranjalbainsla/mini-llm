@@ -5,20 +5,16 @@ import torch.nn.functional as F
 class Expert(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias),
-            nn.GELU(),
-            nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias),
-            nn.Dropout(config.dropout),
-        )
-        # TODO: add "expert_hidden" config knob to introduce DeepSeekMoe's
-        # "fine grained expert segmentation" (which is the idea that as as num_experts
-        # goes up, we deliberately shrink each expert's hidden dim so that P_total (model size) 
-        # doesn't explode and each expert specializes on a narrower slice of behavior)
+        # Fine-grained expert segmentation: shrink each expert's hidden dim as num_experts grows.
+        hidden_dim = getattr(config, "moe_intermediate_size", None) or int(8 * config.n_embd / 3)
+        self.gate = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.up = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.down = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
         # Note: Refer moe_scaling_practice.ipynb (point 3 - granularity) for theory/math
 
     def forward(self, x):
-        return self.net(x)
+        return self.dropout(self.down(F.silu(self.gate(x)) * self.up(x)))
   
 class MoEDeepSeek(nn.Module):
     """ Adds always-active shared experts alongside routed experts """
@@ -28,7 +24,7 @@ class MoEDeepSeek(nn.Module):
         self.num_experts = config.num_experts
         self.num_shared_experts = config.num_shared_experts
         self.k = config.k
-        self.target_fraction = config.k / config.num_experts
+        self.target_fraction = 1.0 / config.num_experts
         self.bias_update_speed = config.bias_update_speed
         self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
         self.experts = nn.ModuleList(
@@ -44,7 +40,7 @@ class MoEDeepSeek(nn.Module):
         tokens = x.reshape(B * T, C)
         
         router_logits = self.router(tokens) # (B*T, num_experts)
-        scores = torch.sigmoid(router_logits)
+        scores = torch.sigmoid(router_logits) 
 
         # Bias only affects expert selection.
         biased_scores = scores + self.expert_bias
@@ -52,6 +48,8 @@ class MoEDeepSeek(nn.Module):
         _, topk_idx = torch.topk(biased_scores, self.k, dim=-1) # (B*T, k)
 
         # Gating uses the original affinity scores.
+        # Each row of topk_idx lists the columns (dim=1) to read from the 
+        # same row of scores, so the output has topk_idx's shape (B*T, k)
         gates = scores.gather(1, topk_idx)
         gates /= gates.sum(dim=-1, keepdim=True)
         

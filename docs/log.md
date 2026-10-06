@@ -53,6 +53,7 @@ Base config: [mha + mlp + layernorm] lr=1e-3 max_iters=2000
 |---|---|---|---|---|---|---|---|---|---|
 | baseline_colab | 1 | 1.6355 | -0.0012 (-0.2 std) | 2000 | 0.209 | 810,049 | 47.7 | Tesla T4 | noise |
 | rmsnorm | 1 | 1.6368 | +0.0000 (+0.0 std) | 2000 | 0.208 | 808,897 | 50.5 | Tesla T4 | noise | 
+| swiglu | 1 | 1.5982 | -0.0385 (-5.0 std) | 2000 | 0.218 | 806,977 | 52.5 | Tesla T4 | real (better) | 
 
 
 1) RMS norm
@@ -64,4 +65,14 @@ Base config: [mha + mlp + layernorm] lr=1e-3 max_iters=2000
 
 2) Normalization vs no normalization
 TODO: Add identity to NORM_REGISTRY (lambda config: nn.Identity()), so --norm=identity removes every norm including ln_f. Then run an LR sweep {3e-4, 1e-3, 3e-3, 1e-2} for layernorm vs identity, one seed each.
+___
+3) MLP vs SwiGLU at matched params
+* Hypothesis: >2 std since swiglu learns better, similar param count
+* Config: --ffn=swiglu, all else as baseline
+* Results (seed 1): best val 1.5982 vs baseline 1.6368 (-0.0385, -5.0 std), best iter 2000, gap 0.218, 806,977 params, 52.5 ms/iter on Tesla T4
+* Verdict: real (better)
+* Takeaway: 
+<p align="center">
+    <img src="../plots/val_curves_baseline_vs_swiglu.png" alt="mlp vs swiglu">
+</p>
 

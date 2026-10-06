@@ -2,64 +2,57 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def ffn_hidden_dim(config, active_experts=1, multiple=8):
+    """Iso-active SwiGLU width: active_experts * 3 * C * d == 8 * C^2."""
+    d = getattr(config, "moe_intermediate_size", None)
+    if d is None:
+        d = 8 * config.n_embd / (3 * active_experts)
+        d = max(multiple, round(d / multiple) * multiple)
+    return d
+
 class Expert(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, hidden_dim):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias),
-            nn.GELU(),
-            nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias),
-            nn.Dropout(config.dropout),
-        )
+        self.gate = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.up = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.down = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
-        return self.net(x)
-  
-class MoE(nn.Module):
-    """ Vanilla Switch transformer style """
+        return self.dropout(self.down(F.silu(self.gate(x)) * self.up(x)))
 
+class MoE(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
-        self.experts = nn.ModuleList(
-            [Expert(config.n_embd) for _ in range(config.num_experts)]
-        )
-        self.num_experts = config.num_experts
-        self.k = config.k
+        self.num_experts, self.k = config.num_experts, config.k
+        d = ffn_hidden_dim(config, active_experts=self.k)
+        self.router = nn.Linear(config.n_embd, self.num_experts, bias=False)
+        self.experts = nn.ModuleList(Expert(config, d) for _ in range(self.num_experts))
+        self.aux_loss = None  # load-balancing loss from the latest forward
+        self.load = None  # per-expert token fraction, for logging
 
     def forward(self, x):
         B, T, C = x.shape
         tokens = x.reshape(B * T, C)
         
-        # argmax returns the index of the largest value
-        # expert_idx = self.router(tokens).argmax(dim=-1) # (B*T, 1) ? no it's (B*T,) 
         router_logits = self.router(tokens) # (B*T, num_experts)
         probs = F.softmax(router_logits, dim=-1)
-        topk_probs, topk_idx = torch.topk(probs, self.k, dim=-1) # (B*T, k)
-        topk_probs /= topk_probs.sum(dim=-1, keepdim=True)
-
-        # expert_weights, expert_indices = self.router(tokens).topk(self.k, dim=-1) # (B*T, k)
+        topk_probs, topk_idx = torch.topk(probs, self.k, dim=-1) # both (B*T, k)
+        if self.k > 1:
+            topk_probs /= topk_probs.sum(dim=-1, keepdim=True)
 
         out = torch.zeros_like(tokens)
-
-        # for i, expert in enumerate(self.experts):
-        #     if self.k == 1:
-        #         mask = expert_idx == i # boolean tensor of (B*T,) shape
-        #         # mask.any() returns True if at least one element in the boolean tensor is True
-        #         if mask.any(): 
-        #             out[mask] = expert(tokens[mask])
-        #     else:
-        #         mask = (expert_indices == i).any(dim=-1) # (B*T,) -> batch for an expert
-        #         if mask.any():
-        #             weight = expert_weights[expert_indices == i].unsqueeze(-1)
-        #             out[mask] += weight * expert(tokens[mask])
 
         for expert_id, expert in enumerate(self.experts):
 
             # Find every (token, slot) pair routed to this expert
+
+            # (topk_idx == expert_id) makes a (B*T, k) boolean mask of where 
+            # this expert was picked, and .nonzero(as_tuple=True) returns the 
+            # row indices (token_idx, which tokens) and column indices 
+            # (slot_idx, which of the token's k choices) of the True entries
             token_idx, slot_idx = (topk_idx == expert_id).nonzero(as_tuple=True)
 
-            # if you want to be able to export this, fix this part
             if token_idx.numel() == 0:
                 continue
 
@@ -75,11 +68,13 @@ class MoE(nn.Module):
             # Scatter-add back into output
             out[token_idx] += weights * expert_output
             
-        P = probs.mean(dim=0)
-
+        P = probs.mean(dim=0) # average probability of each expert being selected across all tokens
         mask = F.one_hot(topk_idx, num_classes=self.num_experts).float()
-        f = mask.sum(dim=1).float().mean(dim=0) / self.k
+        f = mask.sum(dim=1).float().mean(dim=0) / self.k # average fraction of tokens routed to each expert
 
         aux_loss = self.num_experts * (P * f).sum()
 
-        return out.reshape(B, T, C), aux_loss
+        self.aux_loss = aux_loss   # GPT adds config.alpha * sum over layers when use_aux_loss is on
+        self.load = f.detach()
+
+        return out.reshape(B, T, C), None  # None = no routing info, same as the dense FFNs

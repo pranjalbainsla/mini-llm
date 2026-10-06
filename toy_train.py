@@ -91,6 +91,30 @@ model = GPT(vocab_size, model_config)
 model.to(device)
 n_params = sum(p.numel() for p in model.parameters())
 print(f"params: {n_params:,}")
+
+def ffn_param_counts(model):
+    """(total, active-per-token) FFN params summed over layers. Active counts the
+    router + k routed experts (+ shared experts); dense FFNs are fully active."""
+    total = active = 0
+    for block in model.blocks:
+        ffn = block.ffn
+        t = sum(p.numel() for p in ffn.parameters())
+        total += t
+        if hasattr(ffn, "experts"):
+            per_expert = sum(p.numel() for p in ffn.experts[0].parameters())
+            n_shared = len(getattr(ffn, "shared_experts", []))
+            router = sum(p.numel() for p in ffn.router.parameters())
+            active += router + (ffn.k + n_shared) * per_expert
+        else:
+            active += t
+    return total, active
+
+ffn_total, ffn_active = ffn_param_counts(model)
+print(f"ffn params: total {ffn_total:,}, active/token {ffn_active:,} "
+      f"({ffn_active / ffn_total:.1%} of total)")
+if hasattr(model.blocks[0].ffn, "experts"):
+    print(f"expert hidden dim: {model.blocks[0].ffn.experts[0].gate.out_features}, "
+          f"num_experts: {model.blocks[0].ffn.num_experts}, k: {model.blocks[0].ffn.k}")
 # -----------------------------------------------------------------------------
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate,
                                betas=(beta1, beta2), weight_decay=weight_decay)
@@ -107,12 +131,21 @@ def estimate_loss():
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         eval_gen = make_generator(eval_seed) 
+        load_sum = None
         for i in range(eval_iters):
             X, Y = get_batch(split, batch_size, block_size, device, eval_gen)
             with ctx:
                 logits, loss, _ = model(X, Y)  # third return is per-layer MoE routing info
             losses[i] = loss.item()
+            if split == 'val':
+                # per-layer expert load fraction (sums to 1 across experts), set by MoE.forward
+                loads = [b.ffn.load for b in model.blocks if getattr(b.ffn, 'load', None) is not None]
+                if loads:
+                    cur = torch.stack(loads).float()
+                    load_sum = cur if load_sum is None else load_sum + cur
         out[split] = losses.mean()
+        if load_sum is not None:
+            out['load'] = (load_sum / eval_iters).cpu()  # (n_moe_layers, num_experts)
     model.train()
     eval_time += time.time() - t_start
     return out
@@ -129,7 +162,16 @@ while True:
     if iter_num % eval_interval == 0:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        history.append({'iter': iter_num, 'train': losses['train'].item(), 'val': losses['val'].item()})
+        entry = {'iter': iter_num, 'train': losses['train'].item(), 'val': losses['val'].item()}
+        if 'load' in losses:
+            load = losses['load']                                   # (layers, E)
+            E = load.shape[1]
+            ent = -(load * (load + 1e-9).log()).sum(-1) / torch.log(torch.tensor(float(E)))
+            entry['load'] = load.tolist()
+            print(f"  expert load (val): max {load.max().item() * E:.2f}x, min {load.min().item() * E:.2f}x uniform, "
+                  f"norm. entropy/layer {[round(e, 3) for e in ent.tolist()]}, "
+                  f"dead(<10% uniform) {(load < 0.1 / E).sum().item()}/{load.numel()}")
+        history.append(entry)
 
     if iter_num == 0 and eval_only:
         break
@@ -182,6 +224,7 @@ if run_name and not eval_only:
         'train_at_best': best['train'], 'gap_at_best': best['val'] - best['train'],
         'final_val': history[-1]['val'], 'final_train': history[-1]['train'],
         'params': n_params,
+        'ffn_params_total': ffn_total, 'ffn_params_active': ffn_active,
         'sec_per_iter': (time.time() - t_run_start - eval_time) / iter_num,
         'history': history,
         'config': config,

@@ -10,6 +10,7 @@ class GPT(nn.Module):
     def __init__(self, vocab_size, config):
         super().__init__()
 
+        self.config = config
         self.block_size = config.block_size
 
         self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
@@ -22,11 +23,17 @@ class GPT(nn.Module):
         B, T = idx.shape
         x = self.token_embedding_table(idx) # (B,T,C)
 
-        total_aux = None  # aux loss (e.g. MoE load-balancing) not wired up yet
+        total_aux = None
         routing_info = []
         for block in self.blocks:
             x, topk_idx = block(x, **kwargs)
             routing_info.append(topk_idx)
+        # Load-balancing aux loss, training only: eval/val loss stays pure cross-entropy so
+        # runs with use_aux_loss on/off are comparable.
+        if self.training and getattr(self.config, 'use_aux_loss', False):
+            auxes = [b.ffn.aux_loss for b in self.blocks if getattr(b.ffn, 'aux_loss', None) is not None]
+            if auxes:
+                total_aux = torch.stack(auxes).sum()
         x = self.ln_f(x)
         logits = self.lm_head(x) # (B,T,vocab_size)
 

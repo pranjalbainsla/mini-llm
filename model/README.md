@@ -21,8 +21,8 @@ Next: move to the decoupled formulation (content dim `dh` plus a shared `d_rope`
 
 ### FFN
 
-1) **Q: Is SwiGLU better than a plain ReLU/GELU FFN?**
-A: SwiGLU adds a learned gate. One projection goes through SiLU and is multiplied elementwise with a second "value" projection, so the FFN can modulate each hidden feature per token instead of applying a fixed nonlinearity. Empirically (Shazeer 2020, later adopted by PaLM, LLaMA and DeepSeek) it gives lower loss than ReLU/GELU MLPs at a matched parameter count.
+1) **Q: Why is SwiGLU better than a plain ReLU/GELU FFN?**
+A: Instead of just expanding and applying one nonlinearity, SwiGLU computes two projections of the input: one gets passed through a smooth activation called Swish, and the other acts as a "gate" that gets multiplied elementwise with the first, so the network learns to let some information through more than others, kind of like a volume knob on each feature, and that tends to work a bit better in practice than a plain ReLU MLP.
 To keep the budget equal, the hidden size shrinks to about 8/3·C (as in `swiglu.py`), so 3 matrices × 8/3·C² ≈ 8C², the same as the 4C ReLU MLP. The gain is quality per parameter, not fewer parameters, and the explanation is mostly empirical rather than theoretically settled.
 Next: swiglu-style experts in moe_deepseek to align with the actual paper
 
