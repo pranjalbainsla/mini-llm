@@ -2,11 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def ffn_hidden_dim(config, active_experts=1, multiple=8):
+    """Iso-active SwiGLU width: active_experts * 3 * C * d == 8 * C^2."""
+    d = getattr(config, "moe_intermediate_size", None)
+    if d is None:
+        d = 8 * config.n_embd / (3 * active_experts)
+        d = max(multiple, round(d / multiple) * multiple)
+    return d
+
 class Expert(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, hidden_dim):
         super().__init__()
-        # Fine-grained expert segmentation: shrink each expert's hidden dim as num_experts grows.
-        hidden_dim = getattr(config, "moe_intermediate_size", None) or int(8 * config.n_embd / 3)
         self.gate = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
         self.up = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
         self.down = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)
@@ -27,11 +33,13 @@ class MoEDeepSeek(nn.Module):
         self.target_fraction = 1.0 / config.num_experts
         self.bias_update_speed = config.bias_update_speed
         self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
+        # Fine-grained segmentation: width is iso-active across routed (k) + shared experts.
+        d = ffn_hidden_dim(config, active_experts=self.k + self.num_shared_experts)
         self.experts = nn.ModuleList(
-            [Expert(config) for _ in range(config.num_experts)]
+            [Expert(config, d) for _ in range(config.num_experts)]
         )
         self.shared_experts = nn.ModuleList(
-            [Expert(config) for _ in range(config.num_shared_experts)]
+            [Expert(config, d) for _ in range(config.num_shared_experts)]
         )
         self.register_buffer("expert_bias", torch.zeros(config.num_experts))
 
