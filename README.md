@@ -1,18 +1,46 @@
 # miniLLM
 
+An ML playground for simplifying modern LLM systems and their architecture, getting to the crux of each idea or algorithm (attention variants, FFN/MoE, normalization) in small, readable, swappable modules.
+
+### Quick start: train the configurable GPT
+
+The configurable model is [model/gpt_moe.py](model/gpt_moe.py). It is trained by [toy_train.py](toy_train.py), and every architectural choice comes from a config file plus optional CLI overrides.
+
+```bash
+pip install torch numpy
+
+# train the baseline (mha + mlp + layernorm + rope) on tiny shakespeare, char-level
+# data/input.txt is downloaded automatically on first run
+python toy_train.py configs/base.py
+
+# swap components with --key=value overrides
+python toy_train.py configs/base.py --ffn=swiglu --norm=rmsnorm
+python toy_train.py configs/base.py --ffn=moe_deepseek --num_experts=16 --k=4 --num_shared_experts=2
+
+# save curves, best val loss and params to results/<run_name>.json
+python toy_train.py configs/base.py --run_name=my_run
+```
+
+| knob | options |
+|---|---|
+| `attention` | `mha`, `mha_optimized`, `gqa`, `mla_naive`, `mla_noabs`, `mla_abs` |
+| `ffn` | `mlp`, `swiglu`, `moe`, `moe_deepseek` |
+| `norm` | `layernorm`, `rmsnorm` |
+
+Sizes and training knobs (`n_embd`, `n_layer`, `max_iters`, `learning_rate`, MoE/MLA settings, ...) are all in [configs/base.py](configs/base.py). An unknown key raises an error. To train on a different corpus, put your text at `data/input.txt`.
+
+Before trusting a new module, run `python scripts/sanity.py` (shape, gradient, causality and overfit checks). For multi-seed runs see [experiments/run_seeds.sh](experiments/run_seeds.sh), and for results see [docs/log.md](docs/log.md).
+
 ### Project Structure
 ```text
 .
 ├── configs/
-│   ├── base.py                         # Default baseline config for experiments
-│   └── finetune_shakespeare.py         # Config overrides for finetuning on Shakespeare
+│   └── base.py                         # Default baseline config for experiments
 │
 ├── data/
-│   ├── dataset.py                      # Dataset loading, tokenization and batch generation
-│   ├── shakespeare/
-│   │   └── prepare.py                  # Shakespeare dataset preparation (BPE, GPT-2 compatible)
+│   ├── dataset.py                      # Char-level tokenizer + batcher over data/input.txt (auto-downloaded)
 │   └── shakespeare_char/
-│       └── prepare.py                  # Shakespeare dataset preparation (character-level)
+│       └── prepare.py                  # Tiny Shakespeare preparation (character-level, for train.py)
 │
 ├── model/
 │   ├── __init__.py
@@ -27,9 +55,9 @@
 │   │   ├── mha.py                      # Basic multi-head self-attention
 │   │   ├── mha_optimized.py            # Optimized MHA with KV caching
 │   │   ├── gqa.py                      # Grouped-Query Attention with KV caching
-│   │   ├── mla_naive.py                # Naive Multi-head Latent Attention
-│   │   ├── mla_without_weight_absorption.py # DeepSeek-style MLA implementation (without weight absorption)
-│   │   ├── mla_with_weight_absorption.py # DeepSeek MLA with weight absorption
+│   │   ├── mla_naive.py                # MLA, naive (RoPE on the full up-projected K)
+│   │   ├── mla_without_weight_absorption.py # MLA, decoupled RoPE, no weight absorption
+│   │   ├── mla_with_weight_absorption.py # MLA, decoupled RoPE, with weight absorption
 │   │   └── rope.py                     # Rotary positional embedding utilities
 │   │
 │   ├── ffn/
@@ -44,9 +72,9 @@
 │       ├── layernorm.py                # LayerNorm implemention
 │       └── rmsnorm.py                  # RMSNorm implementation
 │
-├── train.py                            # Main training loop, evaluation and checkpointing
-├── toy_train.py                        # Simplified training script for quick experiments
-├── sample.py                           # Text generation from a checkpoint (main script)
+├── train.py                            # nanoGPT-style training loop (for gpt_nanogpt.py), evaluation and checkpointing
+├── toy_train.py                        # Training loop for the configurable GPT (gpt_moe.py), writes results/<run_name>.json
+├── sample.py                           # Text generation from a checkpoint
 ├── configurator.py                     # CLI configuration overrides (exec'd by the entry points above)
 │
 ├── experiments/                        # Ablation tooling; run from the repo root
@@ -57,16 +85,12 @@
 │
 ├── scripts/
 │   ├── sanity.py                       # Shape / gradient / causality / overfit checks
-│   ├── profiler.py                     # PyTorch profiling (example script, TODO: read more about profiling)
-│   └── legacy/                         # Stale: import modules that no longer exist (model.gpt, config)
-│       ├── generate.py                 # Minimal generation script, kept for understanding
-│       └── export.py                   # ONNX model export
+│   └── profiler.py                     # PyTorch profiling (example script, TODO: read more about profiling)
 │
-├── results/                            # Per-run JSON + logs (<tag>_s<seed>.json, <tag>.hyp.json)
+├── results/                            # Per-run JSON (<tag>_s<seed>.json)
 ├── plots/                              # Generated figures
 ├── docs/
 │   ├── log.md                          # Experiment log (hypothesis / config / results / takeaway)
-│   ├── index.md                        # Codebase index
 │   └── notebooks/
 │       ├── moe_mla_sizing.ipynb        # MoE / MLA parameter and memory sizing
 │       └── moe_scaling_practice.ipynb  # MoE scaling practice notebook

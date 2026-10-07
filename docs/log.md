@@ -1,6 +1,6 @@
-# my worklog
+# my experimentation worklog
 
-> config changes, bugs found and fixed, and sanity-check results across architecture combinations.
+> setup and bug fixes, baseline calibration, and architecture ablations
 
 1) **Shorter iteraton budget**: To get a trustworthy baseline across variants, I'm giving training and eval their own seeded data generators, both pulled from the base config. Fixed seeds mean any difference between two runs comes from the thing I changed, not from batch order (training), and every run is scored on the same eval batches (otherwise eval noise looks like a real difference). I'm also raising eval_iters from 40 to 200 to further reduce noise, since max_iters has been cut to 2000 and with shorter runs, each eval point matters more.
 > Note: 2000 iters * 16 * 128 tokens is about 4M tokens, which is roughly 4 epochs on tinyshakespeare. Pretty less, results won't be representative of the final quality but it's still fine for screening for now.

@@ -4,13 +4,14 @@ import torch.nn.functional as F
 
 from .rope import apply_rope, precompute_freqs
 
-class MLAAbsorb(nn.Module):
+class MLADeepSeekOptimized(nn.Module):
 
     def __init__(self, config):
         super().__init__()
 
         assert config.n_embd % config.n_head == 0
 
+        self.n_head = config.n_head
         self.dh = config.n_embd // config.n_head  # Dimension of each attention head
         self.dh_rotary = int(self.dh * config.rotary_ratio)
         self.dh_non_rotary = self.dh - self.dh_rotary
@@ -93,6 +94,9 @@ class MLAAbsorb(nn.Module):
         # ------------------------ attention --------------------------
         if use_weight_absorption:
             # Compute attention scores directly in latent space using absorbed weights
+            # TODO: absorbed path ignores the up_q / up_k biases, so it only matches the non-absorbed
+            # path when bias=False (max diff ~2e-7 vs ~0.2 with bias=True). Either assert config.bias is
+            # False for this variant, or fold the biases into the absorbed computation.
 
             # Reshaping to add head dimension
             Wq = self.up_q.weight.view(self.n_head, self.dh_non_rotary, -1) # (n_head, dh_non_rotary, latent_q_dim)
@@ -107,7 +111,7 @@ class MLAAbsorb(nn.Module):
             )  # (B, n_head, T, latent_kv_dim)
             # you simply cannot have use_cache=False if you have turned on use_weight_absorption (it's senseless)
             K_latent = self.kv_cache.unsqueeze(1)  # (B, 1, L, latent_kv_dim)
-            wei = (Q_absorb @ K_latent.transpose(-2, -1) + Q_rope @ K_rope.transpose(-2, -1)) / math.sqrt(self.dh) 
+            wei = (Q_absorb @ K_latent.transpose(-2, -1) + Q_rope.transpose(1, 2) @ K_rope.transpose(1, 2).transpose(-2, -1)) / math.sqrt(self.dh) 
 
         else:
             # original MLA path

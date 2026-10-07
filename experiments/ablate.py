@@ -1,14 +1,13 @@
 """
 Resumable ablation queue for Colab. Runs each (tag, args) back to back via toy_train.py,
 skips runs whose results/<tag>_s<seed>.json already exists, logs failures and moves on,
-and mirrors results/ to Drive after every run (Colab wipes local disk with the session).
+and mirrors results/ to Drive after every run.
 
 Before each tag's first run it writes results/<tag>.hyp.json (hypothesis + GPU + time), so the
 hypothesis is on disk before any result exists. summarize.py reads it back.
-Run everything from the repo root (paths like results/ and toy_train.py are cwd-relative).
+Run everything from the repo root.
 
 Colab cell:
-    from google.colab import drive; drive.mount('/content/drive')
     from experiments.ablate import run_queue
     run_queue([
         dict(tag='gqa', args=['--attention=gqa'], note='GQA ~ noise: fewer KV heads cost little at this scale'),
