@@ -1,0 +1,117 @@
+{
+ "run_name": "swiglu_s1",
+ "init_seed": 1,
+ "train_seed": 1,
+ "eval_seed": 4242,
+ "best_val": 1.598230242729187,
+ "best_iter": 2000,
+ "train_at_best": 1.380692720413208,
+ "gap_at_best": 0.217537522315979,
+ "final_val": 1.598230242729187,
+ "final_train": 1.380692720413208,
+ "params": 806977,
+ "sec_per_iter": 0.05247148986103414,
+ "history": [
+  {
+   "iter": 0,
+   "train": 4.431878566741943,
+   "val": 4.428739547729492
+  },
+  {
+   "iter": 200,
+   "train": 1.9607750177383423,
+   "val": 2.0205163955688477
+  },
+  {
+   "iter": 400,
+   "train": 1.7158514261245728,
+   "val": 1.865660548210144
+  },
+  {
+   "iter": 600,
+   "train": 1.6034655570983887,
+   "val": 1.7875070571899414
+  },
+  {
+   "iter": 800,
+   "train": 1.5397753715515137,
+   "val": 1.7372877597808838
+  },
+  {
+   "iter": 1000,
+   "train": 1.4910391569137573,
+   "val": 1.6833865642547607
+  },
+  {
+   "iter": 1200,
+   "train": 1.461999773979187,
+   "val": 1.6589269638061523
+  },
+  {
+   "iter": 1400,
+   "train": 1.4371626377105713,
+   "val": 1.6350281238555908
+  },
+  {
+   "iter": 1600,
+   "train": 1.4148266315460205,
+   "val": 1.6223050355911255
+  },
+  {
+   "iter": 1800,
+   "train": 1.3977187871932983,
+   "val": 1.6096419095993042
+  },
+  {
+   "iter": 2000,
+   "train": 1.380692720413208,
+   "val": 1.598230242729187
+  }
+ ],
+ "config": {
+  "vocab_size": 65,
+  "eval_only": false,
+  "run_name": "swiglu_s1",
+  "results_dir": "results",
+  "weight_decay": 0.1,
+  "beta1": 0.9,
+  "beta2": 0.95,
+  "grad_clip": 1.0,
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "arg": "--ffn=swiglu",
+  "config_file": "configs/base.py",
+  "batch_size": 16,
+  "block_size": 128,
+  "max_iters": 2000,
+  "learning_rate": 0.001,
+  "eval_interval": 200,
+  "eval_iters": 200,
+  "log_interval": 20,
+  "init_seed": 1,
+  "train_seed": 1,
+  "eval_seed": 4242,
+  "n_embd": 128,
+  "n_head": 4,
+  "n_layer": 4,
+  "n_kv_heads": 2,
+  "bias": true,
+  "attention": "mha",
+  "ffn": "swiglu",
+  "norm": "layernorm",
+  "position": "rope",
+  "latent_kv_dim": 32,
+  "latent_q_dim": 32,
+  "rotary_ratio": 0.25,
+  "num_experts": 4,
+  "num_shared_experts": 2,
+  "k": 2,
+  "gamma": 0.001,
+  "alpha": 0.001,
+  "rmsnorm_eps": 1e-05,
+  "dropout": 0.0,
+  "key": "ffn",
+  "val": "swiglu",
+  "attempt": "swiglu"
+ }
+}
