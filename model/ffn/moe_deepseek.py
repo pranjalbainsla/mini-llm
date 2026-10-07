@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def ffn_hidden_dim(config, active_experts=1, multiple=8):
+def ffn_hidden_dim(config, active_experts=1, multiple=1):
     """Iso-active SwiGLU width: active_experts * 3 * C * d == 8 * C^2."""
     d = getattr(config, "moe_intermediate_size", None)
     if d is None:

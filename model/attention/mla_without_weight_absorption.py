@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from .rope import apply_rope, precompute_freqs
 
-class MultiheadLatentAttentionDeepSeek(nn.Module):
+class MLANoAbsorb(nn.Module):
 
     def __init__(self, config):
         super().__init__()
