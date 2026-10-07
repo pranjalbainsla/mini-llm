@@ -21,10 +21,10 @@ Next: move to the decoupled formulation (content dim `dh` plus a shared `d_rope`
 
 ### FFN
 
+<a id="swiglu-vs-mlp"></a>
 1) **Q: Why is SwiGLU better than a plain ReLU/GELU FFN?**
 A: Instead of just expanding and applying one nonlinearity, SwiGLU computes two projections of the input: one gets passed through a smooth activation called Swish, and the other acts as a "gate" that gets multiplied elementwise with the first, so the network learns to let some information through more than others, kind of like a volume knob on each feature, and that tends to work a bit better in practice than a plain ReLU MLP.
 To keep the budget equal, the hidden size shrinks to about 8/3·C (as in `swiglu.py`), so 3 matrices × 8/3·C² ≈ 8C², the same as the 4C ReLU MLP. The gain is quality per parameter, not fewer parameters, and the explanation is mostly empirical rather than theoretically settled.
-Next: swiglu-style experts in moe_deepseek to align with the actual paper
 
 2) **Q: Why are the MoE routers bias-free?**
 A: In DeepSeek-style balancing, the `expert_bias` buffer is the only bias that should influence expert selection. It is updated by the gamma rule rather than by gradients, so a learned router bias would duplicate it and confound the balancing. LLaMA-style and OLMoE-style routers are bias-free as well.

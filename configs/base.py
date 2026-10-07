@@ -35,14 +35,13 @@ latent_q_dim = 32                     # MLA: compressed query dimension
 rotary_ratio = 0.25                   # MLA: fraction of head dim using RoPE
 
 # MoE 
-num_experts = 4
+num_experts = 16
+k = 4                                 # routed experts selected per token
 num_shared_experts = 2                # DeepSeek-V3 uses 1; with k=2 this means 4 experts always active/token
 moe_intermediate_size = None          # DeepSeekMoE expert hidden dim
-k = 2                                 # routed experts selected per token
 use_aux_loss = False                  # add alpha * aux load-balancing loss (simple MoE only; training loss only)
 alpha = 0.001                         # auxiliary load-balancing loss coefficient
 bias_update_speed = 0.001             # aux-loss-free expert-bias update speed
-
 
 # Regularization / numerical stability
 rmsnorm_eps = 1e-5
