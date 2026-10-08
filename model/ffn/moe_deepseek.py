@@ -42,6 +42,7 @@ class MoEDeepSeek(nn.Module):
             [Expert(config, d) for _ in range(config.num_shared_experts)]
         )
         self.register_buffer("expert_bias", torch.zeros(config.num_experts))
+        self.load = None  # set each forward: per-expert load fraction, for logging
 
     def forward(self, x):
         B, T, C = x.shape
@@ -81,6 +82,9 @@ class MoEDeepSeek(nn.Module):
             shared_out += expert(tokens)
 
         out = routed_out + shared_out
+
+        # Per-expert load fraction (sums to 1), read by toy_train.estimate_loss on val batches.
+        self.load = torch.bincount(topk_idx.reshape(-1), minlength=self.num_experts).float().detach() / topk_idx.numel()
 
         return out.reshape(B, T, C), topk_idx
     
