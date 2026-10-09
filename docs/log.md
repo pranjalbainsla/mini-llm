@@ -1,10 +1,11 @@
 # my experimentation worklog
 
 1) **Shorter iteraton budget**: To get a trustworthy baseline across variants, I'm giving training and eval their own seeded data generators, both pulled from the base config. Fixed seeds mean any difference between two runs comes from the thing I changed, not from batch order (training), and every run is scored on the same eval batches (otherwise eval noise looks like a real difference). I'm also raising eval_iters from 40 to 200 to further reduce noise, since max_iters has been cut to 2000 and with shorter runs, each eval point matters more.
-> Note: 2000 iters * 16 * 128 tokens is about 4M tokens, which is roughly 4 epochs on tinyshakespeare. Pretty less, results won't be representative of the final quality but it's still fine for screening for now.
+> Note: 2000 iters * 16 * 128 tokens is about 4M tokens, which is roughly 4 epochs on tinyshakespeare (char-level). Pretty less, results won't be representative of the final quality but it's still fine for screening for now.
 2) **Bug**: With targets, forward was returning flattened (B*T, C) logits. Generate and any other caller indexing logits[:, -1, :] would then get the wrong shape or the wrong rows. **Fix:** now we're flattening only for cross entropy, while logits maintain their orginal shape.
 
-3) **Sanity check for [mlp + mha + layernorm]**:
+3) **Sanity check for [mlp + mha + layernorm + rope]**:
+
 ```text
 [1] logits (32, 128, 65) (want (32, 128, 65))
     initial loss 4.4423  vs ln(vocab)=4.1744  -> OK
@@ -17,7 +18,7 @@
 [4] overfitting one batch of 32 x 128 tokens for 300 steps (lr=0.001)
     PASS: loss 0.0095 < 0.1
 ```
-> note: this sanity check is run every time a new module is swapped in (e.g. mlp -> swiglu for the ffn). I only log it again if one of the checks fails; otherwise it's assumed to have passed before the ablation was run.
+- Note: this sanity check is run every time a new module is swapped in (e.g. mlp -> swiglu for the ffn). I only log it again if one of the checks fails; otherwise it's assumed to have passed before the ablation was run.
 
 4) **LR sweep**
 <p align="center">
@@ -46,19 +47,31 @@ Ran the baseline config over 5 seeds; init_seed and train_seed move together; ev
 - The gap (val minus train) shows how much the model is overfitting, and its tiny spread (±0.006) means a variant whose gap moves clearly outside 0.206 changed how it generalizes, which tells you whether a val-loss win came from fitting better or from overfitting less.
 
 ## Ablations
-- **Methodology note:** Every ablation is a single change on top of one frozen baseline [mha + mlp + layernorm + rope, bias=True lr=1e-3, 2000 iters], which was run on 5 seeds (best val 1.6368 ± 0.0077). Variants are run on seed 1 and scored against that 5-seed mean in std units (the same-seed baseline is shown as a sanity check). Verdicts: within 1 std = noise; beyond 2 std = real; 1 to 2 std = inconclusive, add seeds. Wins are not stacked: each ablation is independent, so results may not hold in combination (interactions are untested).
+- **Methodology note:** Every ablation is a single change on top of one frozen baseline [mha + mlp + layernorm + rope, bias=True lr=1e-3, 2000 iters], which was run on 5 seeds (best val 1.6368 ± 0.0077). Variants are run on seed 1 and scored against that 5-seed mean in std units. Verdicts: within 1 std = noise; beyond 2 std = real; 1 to 2 std = inconclusive, add seeds. Wins are not stacked: each ablation is independent, so results may not hold in combination (interactions are untested).
 
 > A serious ablation gets a local decision rule and extra seeds (e.g. 3a: its own dense SwiGLU baseline plus 3 seeds per rung)
 
 - **Scope:** Conclusions are for this toy regime (about 1M params) and treated as hypotheses, not scaling claims. Speed is not compared (free Colab noise, fused vs unfused kernels).
 
+```python
+# Training
+batch_size = 16
+block_size = 128                     
+max_iters = 2000
+learning_rate = 1e-3
+# Model
+n_embd = 128
+n_head = 4
+n_layer = 4
+bias = True
+```
 ### 1. Normalization
 
 **1a. RMSNorm vs LayerNorm**
 - Hypothesis: <1 std, slightly faster than layernorm (ms/iter) since it skips mean-centering and the bias term
 - Config: --norm=rmsnorm, all else as baseline
 
-| tag | best val | Δ vs 5-seed mean (std units) | Δ vs same-seed baseline | verdict |
+| tag | best val | delta vs 5-seed mean (std units) | delta vs same-seed baseline | verdict |
 |---|---|---|---|---|
 | rmsnorm (s1) | 1.6368 | +0.0000 (0.0 std) | +0.0013 | noise |
 
@@ -90,7 +103,7 @@ Ran the baseline config over 5 seeds; init_seed and train_seed move together; ev
 ___
 
 **2b. Granularity at fixed sparsity**
-- Config: --ffn=moe_deepseek --num_experts=E --k=k --bias=False, all else as baseline
+- Config: --ffn=moe_deepseek --num_experts=E --k=k --num_shared_experts=0 --bias=False, all else as baseline
 
 - Setup: E/k of 8/2, 16/4 and 32/8 (num_shared_experts=0, multiple=1). Width is then d = 8(128)/(3k), so active and total params are roughly same on every rung, and the only thing that varies is how finely the FFN is split.
 
