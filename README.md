@@ -29,7 +29,7 @@ python toy_train.py configs/base.py --run_name=my_run
 
 Sizes and training knobs (`n_embd`, `n_layer`, `max_iters`, `learning_rate`, MoE/MLA settings, ...) are all in [configs/base.py](configs/base.py). An unknown key raises an error. To train on a different corpus, put your text at `data/input.txt`.
 
-Before trusting a new module, run `python scripts/sanity.py` (shape, gradient, causality and overfit checks). For multi-seed runs see [experiments/run_seeds.sh](experiments/run_seeds.sh), and for my experimentation log, see [docs/log.md](docs/log.md).
+Before trusting a new module, run `python scripts/sanity.py` (shape, gradient, causality and overfit checks). For multi-seed runs see [experiments/run_seeds.sh](experiments/run_seeds.sh), and for my experimentation log, see [docs/log.md](docs/log.md). All my experiments were run on a Tesla T4.
 
 ### Project Structure
 ```text
