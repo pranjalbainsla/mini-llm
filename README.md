@@ -7,7 +7,7 @@ An ML playground for simplifying modern LLM systems and their architecture, gett
 The configurable model is [model/gpt_moe.py](model/gpt_moe.py). It is trained by [toy_train.py](toy_train.py), and every architectural choice comes from a config file plus optional CLI overrides.
 
 ```bash
-pip install torch numpy
+pip install torch numpy matplotlib   # matplotlib only for plotting scripts
 
 # train the baseline (mha + mlp + layernorm + rope) on tiny shakespeare, char-level
 # data/input.txt is downloaded automatically on first run
@@ -29,7 +29,7 @@ python toy_train.py configs/base.py --run_name=my_run
 
 Sizes and training knobs (`n_embd`, `n_layer`, `max_iters`, `learning_rate`, MoE/MLA settings, ...) are all in [configs/base.py](configs/base.py). An unknown key raises an error. To train on a different corpus, put your text at `data/input.txt`.
 
-Before trusting a new module, run `python scripts/sanity.py` (shape, gradient, causality and overfit checks). For multi-seed runs see [experiments/run_seeds.sh](experiments/run_seeds.sh), and for results see [docs/log.md](docs/log.md).
+Before trusting a new module, run `python scripts/sanity.py` (shape, gradient, causality and overfit checks). For multi-seed runs see [experiments/run_seeds.sh](experiments/run_seeds.sh), and for my experimentation log, see [docs/log.md](docs/log.md).
 
 ### Project Structure
 ```text
@@ -85,6 +85,7 @@ Before trusting a new module, run `python scripts/sanity.py` (shape, gradient, c
 │
 ├── scripts/
 │   ├── sanity.py                       # Shape / gradient / causality / overfit checks
+│   ├── plot_noshared_sweep.py          # MoE granularity (E/k) vs dense plot, incl. expert-load panels
 │   └── profiler.py                     # PyTorch profiling (example script, TODO: read more about profiling)
 │
 ├── results/                            # Per-run JSON (<tag>_s<seed>.json)

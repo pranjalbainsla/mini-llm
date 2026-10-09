@@ -18,7 +18,7 @@
 [4] overfitting one batch of 32 x 128 tokens for 300 steps (lr=0.001)
     PASS: loss 0.0095 < 0.1
 ```
-- Note: this sanity check is run every time a new module is swapped in (e.g. mlp -> swiglu for the ffn). I only log it again if one of the checks fails; otherwise it's assumed to have passed before the ablation was run.
+> Note: this sanity check is run every time a new module is swapped in (e.g. mlp -> swiglu for the ffn). I only log it again if one of the checks fails; otherwise it's assumed to have passed before the ablation was run.
 
 4) **LR sweep**
 <p align="center">
@@ -81,7 +81,7 @@ bias = True
 - **Speed:** No conclusions drawn from ms/iter since the baseline uses PyTorch's fused `nn.LayerNorm` and my RMSNorm is unfused, making the comparison unfair.
 
 **1b. Normalization vs no normalization**
-- TODO: add identity to NORM_REGISTRY (lambda config: nn.Identity()), so --norm=identity removes every norm including ln_f. Then run an LR sweep {3e-4, 1e-3, 3e-3, 1e-2} for layernorm vs identity, one seed each.
+TODO: add identity to NORM_REGISTRY (lambda config: nn.Identity()), so --norm=identity removes every norm including ln_f. Then run an LR sweep {3e-4, 1e-3, 3e-3, 1e-2} for layernorm vs identity, one seed each.
 
 ### 2. FFN
 
