@@ -13,6 +13,5 @@ bench.py
 checkpoints/
 
 .DS_Store
-index.md
 out/
 results/*.log

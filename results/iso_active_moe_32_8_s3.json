@@ -1,0 +1,120 @@
+{
+ "run_name": "iso_active_moe_32_8_s3",
+ "init_seed": 3,
+ "train_seed": 3,
+ "eval_seed": 4242,
+ "best_val": 1.6090279817581177,
+ "best_iter": 2000,
+ "train_at_best": 1.3825290203094482,
+ "gap_at_best": 0.22649896144866943,
+ "final_val": 1.6090279817581177,
+ "final_train": 1.3825290203094482,
+ "params": 2409856,
+ "ffn_params_total": 2129920,
+ "ffn_params_active": 544768,
+ "sec_per_iter": 0.2571050358199883,
+ "history": [
+  {
+   "iter": 0,
+   "train": 4.3894877433776855,
+   "val": 4.392834663391113
+  },
+  {
+   "iter": 200,
+   "train": 2.0076189041137695,
+   "val": 2.063769578933716
+  },
+  {
+   "iter": 400,
+   "train": 1.7576320171356201,
+   "val": 1.9034857749938965
+  },
+  {
+   "iter": 600,
+   "train": 1.638831615447998,
+   "val": 1.8241114616394043
+  },
+  {
+   "iter": 800,
+   "train": 1.5720804929733276,
+   "val": 1.7553088665008545
+  },
+  {
+   "iter": 1000,
+   "train": 1.516263484954834,
+   "val": 1.7188305854797363
+  },
+  {
+   "iter": 1200,
+   "train": 1.4713467359542847,
+   "val": 1.6826233863830566
+  },
+  {
+   "iter": 1400,
+   "train": 1.4474831819534302,
+   "val": 1.65998113155365
+  },
+  {
+   "iter": 1600,
+   "train": 1.421459674835205,
+   "val": 1.6365505456924438
+  },
+  {
+   "iter": 1800,
+   "train": 1.4001495838165283,
+   "val": 1.6216990947723389
+  },
+  {
+   "iter": 2000,
+   "train": 1.3825290203094482,
+   "val": 1.6090279817581177
+  }
+ ],
+ "config": {
+  "vocab_size": 65,
+  "eval_only": false,
+  "run_name": "iso_active_moe_32_8_s3",
+  "results_dir": "results",
+  "weight_decay": 0.1,
+  "beta1": 0.9,
+  "beta2": 0.95,
+  "grad_clip": 1.0,
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "arg": "--bias=False",
+  "config_file": "configs/base.py",
+  "batch_size": 16,
+  "block_size": 128,
+  "max_iters": 2000,
+  "learning_rate": 0.001,
+  "eval_interval": 200,
+  "eval_iters": 200,
+  "log_interval": 20,
+  "init_seed": 3,
+  "train_seed": 3,
+  "eval_seed": 4242,
+  "n_embd": 128,
+  "n_head": 4,
+  "n_layer": 4,
+  "n_kv_heads": 2,
+  "bias": false,
+  "attention": "mha",
+  "ffn": "moe_deepseek",
+  "norm": "layernorm",
+  "position": "rope",
+  "latent_kv_dim": 32,
+  "latent_q_dim": 32,
+  "rotary_ratio": 0.25,
+  "num_experts": 32,
+  "k": 8,
+  "num_shared_experts": 0,
+  "use_aux_loss": false,
+  "alpha": 0.001,
+  "bias_update_speed": 0.001,
+  "rmsnorm_eps": 1e-05,
+  "dropout": 0.0,
+  "key": "bias",
+  "val": "False",
+  "attempt": false
+ }
+}

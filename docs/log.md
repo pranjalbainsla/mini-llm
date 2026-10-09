@@ -1,7 +1,5 @@
 # my experimentation worklog
 
-> setup and bug fixes, baseline calibration, and architecture ablations
-
 1) **Shorter iteraton budget**: To get a trustworthy baseline across variants, I'm giving training and eval their own seeded data generators, both pulled from the base config. Fixed seeds mean any difference between two runs comes from the thing I changed, not from batch order (training), and every run is scored on the same eval batches (otherwise eval noise looks like a real difference). I'm also raising eval_iters from 40 to 200 to further reduce noise, since max_iters has been cut to 2000 and with shorter runs, each eval point matters more.
 > Note: 2000 iters * 16 * 128 tokens is about 4M tokens, which is roughly 4 epochs on tinyshakespeare. Pretty less, results won't be representative of the final quality but it's still fine for screening for now.
 2) **Bug**: With targets, forward was returning flattened (B*T, C) logits. Generate and any other caller indexing logits[:, -1, :] would then get the wrong shape or the wrong rows. **Fix:** now we're flattening only for cross entropy, while logits maintain their orginal shape.
@@ -45,42 +43,43 @@ Ran the baseline config over 5 seeds; init_seed and train_seed move together; ev
     <img src="../plots/seed_strip.png" alt="Baseline seed spread">
 </p>
 
-- **Decision rule:** Baseline best val is 1.6368 ± 0.0077 over 5 seeds, so a variant is clearly different only if it lands outside the ±2 std band (about 1.621 to 1.652) and is noise if it stays within 1 std. In between, I'll rerun it at seeds 2-5 and count it only if the mean gap exceeds 2 std and the sign matches in at least 4 of 5 paired seeds.
 - The gap (val minus train) shows how much the model is overfitting, and its tiny spread (±0.006) means a variant whose gap moves clearly outside 0.206 changed how it generalizes, which tells you whether a val-loss win came from fitting better or from overfitting less.
-- Three seeds peaked at iter 2000 and seeds 2 and 5 at 1800, so the runs are still improving slightly at the end of 2000 iterations.
 
 ## Ablations
+- **Methodology note:** Every ablation is a single change on top of one frozen baseline [mha + mlp + layernorm + rope, bias=True lr=1e-3, 2000 iters], which was run on 5 seeds (best val 1.6368 ± 0.0077). Variants are run on seed 1 and scored against that 5-seed mean in std units (the same-seed baseline is shown as a sanity check). Verdicts: within 1 std = noise; beyond 2 std = real; 1 to 2 std = inconclusive, add seeds. Wins are not stacked: each ablation is independent, so results may not hold in combination (interactions are untested).
 
-Base config: [mha + mlp + layernorm + rope] lr=1e-3 max_iters=2000. All runs are seed 1 on a Tesla T4, scored against the seed-averaged baseline (best val 1.6368 ± 0.0077; the baseline re-run on Colab T4 gave 1.6355 at 47.7 ms/iter, which is the speed reference below). Deltas are in baseline std units, verdicts follow the decision rule above (noise, real (better), real (worse)).
+> A serious ablation gets a local decision rule and extra seeds (e.g. 3a: its own dense SwiGLU baseline plus 3 seeds per rung)
 
-> Note: ideally each ablation would get its own baseline on multiple seeds, with the decision rule applied against that std, and each win would be stacked into the next ablation (e.g. "swiglu is clearly better, so run the next one on top of it"). For now everything is compared against the same [mlp + mha + layernorm + rope] baseline instead of being a progressive ladder. This is a todo for when I get a fancier gpu.
+- **Scope:** Conclusions are for this toy regime (about 1M params) and treated as hypotheses, not scaling claims. Speed is not compared (free Colab noise, fused vs unfused kernels).
 
 ### 1. Normalization
 
 **1a. RMSNorm vs LayerNorm**
-* Hypothesis: <1 std, slightly faster than layernorm (ms/iter) since it skips mean-centering and the bias term
-* Config: --norm=rmsnorm, all else as baseline
+- Hypothesis: <1 std, slightly faster than layernorm (ms/iter) since it skips mean-centering and the bias term
+- Config: --norm=rmsnorm, all else as baseline
 
-| tag | best val | delta | best iter | gap | params | ms/iter | verdict |
-|---|---|---|---|---|---|---|---|
-| baseline (layernorm) | 1.6368 | n/a | | 0.206 | 810,049 | 47.7 | n/a |
-| rmsnorm | 1.6368 | +0.0000 (+0.0 std) | 2000 | 0.208 | 808,897 | 50.5 | noise |
+| tag | best val | Δ vs 5-seed mean (std units) | Δ vs same-seed baseline | verdict |
+|---|---|---|---|---|
+| rmsnorm (s1) | 1.6368 | +0.0000 (0.0 std) | +0.0013 | noise |
 
-* Takeaway: RMSNorm matches LayerNorm on val loss with 1,152 fewer params, but my unfused implementation is ~6% slower on a T4. Quality-neutral (delta 0 is just a crazy coincidence), no speed win without a fused kernel.
+
+- **Takeaway:** RMSNorm matches LayerNorm on val loss: 1.6368 vs the 5-seed mean of 1.6368 (+0.0000, 0.0 std; +0.0013 vs the same-seed baseline), so it's noise either way. It has 1,152 fewer params (9 norms × 128 bias terms, `ln_f` included), about 0.14% of the model, so effectively iso-param.
+
+- **Speed:** No conclusions drawn from ms/iter since the baseline uses PyTorch's fused `nn.LayerNorm` and my RMSNorm is unfused, making the comparison unfair.
 
 **1b. Normalization vs no normalization**
-* TODO: add identity to NORM_REGISTRY (lambda config: nn.Identity()), so --norm=identity removes every norm including ln_f. Then run an LR sweep {3e-4, 1e-3, 3e-3, 1e-2} for layernorm vs identity, one seed each.
+- TODO: add identity to NORM_REGISTRY (lambda config: nn.Identity()), so --norm=identity removes every norm including ln_f. Then run an LR sweep {3e-4, 1e-3, 3e-3, 1e-2} for layernorm vs identity, one seed each.
 
 ### 2. FFN
 
-**2a. SwiGLU vs MLP at matched params**
+**2a. SwiGLU vs MLP**
 * Hypothesis: >2 std since swiglu learns better, similar param count ([why SwiGLU is better than a plain MLP](../model/README.md#swiglu-vs-mlp))
 * Config: --ffn=swiglu, all else as baseline
 
-| tag | best val | delta | best iter | gap | params | ms/iter | verdict |
-|---|---|---|---|---|---|---|---|
-| baseline (mlp) | 1.6368 | n/a | | 0.206 | 810,049 | 47.7 | n/a |
-| swiglu | 1.5982 | -0.0385 (-5.0 std) | 2000 | 0.218 | 806,977 | 52.5 | real (better) |
+| tag | best val | delta | best iter | gap | params | verdict |
+|---|---|---|---|---|---|---|
+| baseline (mlp) | 1.6368 | n/a | | 0.206 | 810,049 | n/a |
+| swiglu (s1) | 1.5982 | -0.0385 (-5.0 std) | 2000 | 0.218 | 806,977 | real (better) |
 
 <p align="center">
   <img src="../plots/swiglu_vs_baseline.png" alt="mlp vs swiglu">
@@ -88,68 +87,39 @@ Base config: [mha + mlp + layernorm + rope] lr=1e-3 max_iters=2000. All runs are
 
 * Takeaway: my SwiGLU implementation has bias off by default (copied from standard impls, on the reasoning that at large scale dropping biases saves a bit of compute without hurting loss), which explains the lower param count. A fairer comparison at this small scale would give swiglu the same bias=True default as the rest.
 
-### 3. FFN: MoE expert granularity
-Config: --ffn=moe --num_experts=E --k=k, all else as baseline
-**3a. Granularity at fixed sparsity (E/k = 4)**
-* Setup: fine-grained expert segmentation (routed experts only). E/k ladder of 4/1, 8/2, 16/4, 64/16. Expert intermediate dim scales as d_model/E, so active params, total params and sparsity are held constant and only granularity varies. 
-* Hypothesis: non-monotonic (U-shaped) val loss. Finer granularity should help at first, but with d_model=128, expert intermediate dim at 64/16 is tiny, so each expert's up/down projection is rank-limited and can't represent a useful transformation on its own. Predicting the optimum at 8/2 or 16/4.
+___
 
-| tag | E/k | best val | delta | best iter | gap | params | ms/iter | verdict |
-|---|---|---|---|---|---|---|---|---|
-| iso_active_4_1 | 4/1 | 1.5872 | -0.0496 (-6.4 std) | 2000 | 0.223 | 2,411,841 | 85.5 | real (better) |
-| iso_active_8_2 | 8/2 | 1.5685 | -0.0683 (-8.8 std) | 2000 | 0.227 | 2,366,529 | 115.0 | real (better) |
-| iso_active_16_4 | 16/4 | 1.5659 | -0.0709 (-9.2 std) | 2000 | 0.227 | 2,473,537 | 175.3 | real (better) |
-| iso_active_64_16 | 64/16 | 1.5934 | -0.0434 (-5.6 std) | 2000 | 0.224 | 2,720,321 | 588.1 | real (better) |
+**2b. Granularity at fixed sparsity**
+- Config: --ffn=moe_deepseek --num_experts=E --k=k --bias=False, all else as baseline
 
-<p align="center">
-  <img src="../plots/granularity_val_curves.png" alt="val curves across expert granularity">
-</p>
+- Setup: E/k of 8/2, 16/4 and 32/8 (num_shared_experts=0, multiple=1). Width is then d = 8(128)/(3k), so active and total params are roughly same on every rung, and the only thing that varies is how finely the FFN is split.
 
-* Takeaway: U-shaped as predicted, optimum at 16/4. Every granularity still beats the dense baseline, but 64/16 gives back most of the gain at ~3x the step time of 16/4.
+- Measured: best-val loss over 3 seeds per rung, plus min/max expert load from topk_idx at the end of training.
 
-**3b. Expert utilization vs granularity (E/k = 4)** 
-* Measured: per-expert load (fraction of tokens routed to it) as a multiple of uniform, so 1.0x = perfectly balanced. Summarized with (i) normalized load entropy over training (1 = balanced), (ii) the final load profile sorted from busiest to least busy expert, with rank scaled by E so configs are comparable, and (iii) per-layer heatmaps with experts sorted by load. Entropy and the sorted profile are averaged over layers.
-* Hypothesis: finer granularity gives more skewed utilization.
+
+| E/k | Expert width | FFN active params | FFN total params | best val (mean ± std) | vs dense | busiest / least-used |
+|---|---|---|---|---|---|---|
+| dense | n/a | 523,776 | 523,776 | 1.6026 ± 0.0056 | n/a | n/a |
+| 8/2 | ≈171 | 529,408 | 2,105,344 | 1.5831 ± 0.0103 | −0.0195 | 1.08 / 0.92 |
+| 16/4 | ≈85 | 530,432 | 2,097,152 | 1.5879 ± 0.0042 | −0.0147 | 1.11 / 0.89 |
+| 32/8 | ≈43 | 544,768 | 2,129,920 | 1.5987 ± 0.0094 | −0.0039 | 1.22 / 0.83 |
+
+> load = E * fraction at final eval, max/min over experts, averaged over layers and seeds; 1.0 = uniform
+
 
 <p align="center">
-  <img src="../plots/expert_load_key.png" alt="expert load across granularity">
-</p>
-<p align="center">
-  <img src="../plots/expert_load_sorted.png" alt="expert load across granularity">
+  <img src="../plots/noshared_granularity.png" alt="granularity at fixed sparsity">
 </p>
 
-```text
-final normalized entropy (mean over layers; sd is nan when n=1): 
-iso_active_4_1 0.675 ± nan 
-iso_active_8_2 0.929 ± nan 
-iso_active_16_4 0.957 ± nan 
-iso_active_64_16 0.973 ± nan
-```
-- Result: skew went down with E, not up. 4/1 collapses early. In the sorted profile, 4/1 falls off steeply (busiest expert ~2.4x, most of the others below 1x), while 8/2, 16/4 and 64/16 nearly overlap, starting near ~2x and ending at ~0.2-0.35x.
 
-- Caveats: single seed per config, so only the 4/1 vs finer-configs gap is large enough to treat as a signal; differences among 8/2, 16/4 and 64/16 are within plausible seed noise. Balancing is not fully solved in any config (busiest expert ~2x, least busy < 0.5x at iter 2000), and gamma=0.001 may simply be too slow, so a larger gamma on one config would separate "granularity effect" from "slow correction".
+- Takeaways:
+1) *Coarse MoE beats dense, but finer splitting erodes the gain.* 8/2 and 16/4 are better than dense. Active width is fixed, so more experts just means skinnier ones (171 -> 85 -> 43 hidden units at C=128). Char-level Shakespeare is one homogeneous blob, so there’s not much for a router to specialize on, and with no shared experts every skinny expert ends up relearning the same common stuff.
 
-**3c. Auxiliary load-balancing loss at 16/4**
-* Hypothesis: the aux loss (alpha=0.001) balances load much better than the bias-only balancing (gamma=0.001), which was too slow in 3b. Val loss should barely move, since 16/4 is already near the best the ladder reached.
-* Config: --ffn=moe --num_experts=16 --k=4 --use_aux_loss=True, all else as baseline
+> Note (Param matching): FFN params are summed over 4 layers; runs use bias=False. Per layer, active = k·3C·d + C·E, with d = round(8C/(3k)). Expert params are matched to within about ±1% of dense (rounding of d). The router (C·E) is the main source of mismatch and grows with E: 0.8% / 1.5% / 3.1% of active FFN params at 8/2, 16/4, 32/8. Total active FFN params are therefore +1.1%, +1.3% and +4.0% over dense. Total = E·3C·d + C·E.
+> 
+> Caveat. 32/8 has about 4% more active params than dense, which would favor it, yet it performs worst, so the mismatch doesn’t threaten the conclusion that finer splitting doesn’t help.
 
-| tag | best val | delta | best iter | gap | params | ms/iter | verdict |
-|---|---|---|---|---|---|---|---|
-| iso_active_16_4 (bias balancing only) | 1.5659 | -0.0709 (-9.2 std) | 2000 | 0.227 | 2,473,537 | 175.3 | real (better) |
-| iso_16_4_aux | 1.5631 | -0.0736 (-9.5 std) | 2000 | 0.227 | 2,473,537 | 182.0 | real (better) |
+2) *Load imbalance doesn’t explain the loss.* Imbalance grows mildly with E (busiest expert 1.08x -> 1.22x the even share) with no dead experts. Within a rung it doesn’t track loss, so the drop in benefit is better attributed to granularity itself. 
 
-Final load balance (iter 2000, mean over layers; 1.0x = uniform):
+TODO: test the "relearning common stuff" explanation by rerunning 16/4 and 32/8 with num_shared_experts=1 at the same active params. If fine-grained recovers toward 8/2, shared experts are what make granularity pay off. Also rerun dense with bias=False to match the MoE runs accurately.
 
-| tag | normalized entropy | busiest expert | least busy expert |
-|---|---|---|---|
-| iso_active_16_4 | 0.957 | 1.93x | 0.36x |
-| iso_16_4_aux | 0.990 | 1.49x | 0.65x |
-
-<p align="center">
-  <img src="../plots/expert_load_key_aux.png" alt="aux loss ablation">
-</p>
-
-* Takeaway: aux loss clearly flattens expert load (entropy 0.957 to 0.990, least busy expert 0.36x to 0.65x, no dead expert), which is what it is for. The val-loss gain over bias-only is 0.0028, well inside 1 std, so I read it as noise: better balance did not buy better loss at this scale. Single seed, one alpha (untuned), so the load result is the solid part and the val result is only suggestive. It costs ~4% more step time (182.0 vs 175.3 ms/iter).
-
-**3d. Follow-up**
-* Rerun the granularity ladder with shared experts enabled to test whether they rescue the 64/16 case.
