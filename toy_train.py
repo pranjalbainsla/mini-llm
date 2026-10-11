@@ -197,7 +197,7 @@ while True:
 
     # DeepSeek-V3-style aux-loss-free load balancing: nudges each expert's
     # routing bias based on how over/under-used it was this step (speed set
-    # by config.gamma). update_expert_bias() checks hasattr(block.ffwd, ...)
+    # by config.bias_update_speed). update_expert_bias() checks hasattr(block.ffn, ...)
     # internally, so it's a safe no-op on any block without an MoE FFN.
     model.update_expert_bias(routing_info)
 

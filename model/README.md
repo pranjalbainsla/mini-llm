@@ -27,5 +27,9 @@ A: Instead of just expanding and applying one nonlinearity, SwiGLU computes two 
 To keep the budget equal, the hidden size shrinks to about 8/3·C (as in `swiglu.py`), so 3 matrices × 8/3·C² ≈ 8C², the same as the 4C ReLU MLP. The gain is quality per parameter, not fewer parameters, and the explanation is mostly empirical rather than theoretically settled.
 
 2) **Q: Why are the MoE routers bias-free?**
-A: In DeepSeek-style balancing, the `expert_bias` buffer is the only bias that should influence expert selection. It is updated by the gamma rule rather than by gradients, so a learned router bias would duplicate it and confound the balancing. LLaMA-style and OLMoE-style routers are bias-free as well.
-Next: check that `bias` from the config is never applied to the router in any MoE variant, and monitor expert load balance during training to confirm the `expert_bias` update is doing its job.
+A: In DeepSeek-style balancing, the `expert_bias` buffer is the only bias that should influence expert selection. It is updated by the `bias_update_speed` rule rather than by gradients, so a learned router bias would duplicate it and confound the balancing. LLaMA-style and OLMoE-style routers are bias-free as well.
+
+### Issues 
+
+1) Dropout is inconsistent across FFNs and pathways. `swiglu.py` has no dropout at all, so `config.dropout` is silently ignored when `ffn = "swiglu"`, unlike `mlp.py`. The MoE experts (`moe.py`, `moe_deepseek.py`) apply dropout inside each expert, before the router-weighted combine, instead of on the combined FFN output like the dense FFN. `gpt_moe.py` also has no embedding dropout, while `gpt_nanogpt.py` has `transformer.drop`.
+TODO: add dropout after `down` in `SwiGLU`, decide whether MoE dropout should move to the combined output, and add embedding dropout to `gpt_moe`.
