@@ -4,7 +4,7 @@
 
 1) **Q: Why are the token embedding and `lm_head` untied in `gpt_moe`?**
 A: They are kept as separate weights for now, which keeps the implementation simple and lets the output projection specialize independently of the input lookup. Untying adds a vocab × C matrix to the parameter count. The embedding is a lookup rather than a matmul, so it is normally excluded from "active" parameters anyway.
-Next: try weight tying and compare loss and parameter count at a matched budget, since tying is the usual choice at small scale.
+Note: when training with a large vocab (e.g. 50k), try weight tying and compare loss and parameter count at a matched budget, since tying is the usual choice at small scale when the embedding matrix is a big share of the parameters. With a tiny vocab (e.g. 65), it saves almost nothing.
 
 2) As of now, position = "rope" isn't wired to anything. Nothing in model/ or toy_train.py reads it. RoPE is hard-coded in the attention classes.
 TODO: Wire it up and compare with learned pos embeddings etc.
@@ -18,6 +18,16 @@ TODO: read about it.
 A: The split is simpler and keeps `dh` identical to standard MHA, which is fine for a toy model. The cost is that the rotary dims take capacity away from the content dims, so the model trades content for position.
 In DeepSeek-V2's decoupled design, each head keeps its full content dim and gets extra `d_rope` dims on top. The RoPE key is a single key shared across heads, so the KV cache only grows by `d_rope` per token, and the content path stays compressible through the latent. This design is what makes MLA's cache savings work, because RoPE cannot be absorbed into the up-projection matrices.
 Next: move to the decoupled formulation (content dim `dh` plus a shared `d_rope` key) and measure the KV cache size and quality against the current split version.
+
+2) **Q: What separates the three MLA variants?**
+A: Each one builds on the previous. `mla_naive` is the idea in its simplest form, `mla_noabs` is the DeepSeek-V3 design, and `mla_abs` is the same model with a faster decode path (same weights, same outputs).
+
+| | `mla_naive` | `mla_noabs` | `mla_abs` |
+|---|---|---|---|
+| **RoPE / Q** | RoPE on the full up-projected K and Q, Q not compressed | Decoupled RoPE (content part + shared rotary key), Q and KV both compressed | Same as `mla_noabs` |
+| **Cached per token** | latent + cos/sin (K must be re-rotated each step) | latent + one already-rotated key shared by all heads | Same as `mla_noabs` |
+| **Decode step** | Re-expands K and V from the whole latent cache | Re-expands K and V from the whole latent cache | Attends directly in latent space (`W_k` folded into Q, `W_v` into `W_o`), never builds full K/V |
+
 
 ### FFN
 
