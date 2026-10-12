@@ -17,7 +17,7 @@ class GPT(nn.Module):
         self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
         # RoPE cos/sin are computed once per forward here and passed to every layer
         head_dim = config.n_embd // config.n_head
-        rope_dim = int(head_dim * config.rotary_ratio) if config.attention.startswith("mla") else head_dim
+        rope_dim = int(head_dim * config.rotary_ratio) if config.attention in ("mla_noabs", "mla_abs") else head_dim
         self.rotary = RotaryEmbedding(rope_dim)
         self.blocks = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
         self.ln_f = build_norm(config)

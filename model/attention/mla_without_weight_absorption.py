@@ -2,127 +2,89 @@ import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .rope import apply_rope, precompute_freqs
+from .rope import apply_rope
+
 
 class MultiheadLatentAttentionDeepSeek(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-
         assert config.n_embd % config.n_head == 0
-
         self.n_head = config.n_head
-        self.dh = config.n_embd // config.n_head  # Dimension of each attention head
-        self.dh_rotary = int(self.dh * config.rotary_ratio)
-        self.dh_non_rotary = self.dh - self.dh_rotary
-        
-        cos, sin = precompute_freqs(self.dh_rotary, config.block_size)
-        self.register_buffer("cos", cos)
-        self.register_buffer("sin", sin)
-
-        self.kv_cache = None
-        self.kr_cache = None
-        self.cache_pos = 0
+        self.head_dim = config.n_embd // config.n_head
+        self.rope_dim = int(self.head_dim * config.rotary_ratio)  # per-head dims that carry RoPE
+        self.non_rope_dim = self.head_dim - self.rope_dim 
         self.block_size = config.block_size
-        
-        self.down_proj_kv = nn.Linear(config.n_embd, config.latent_kv_dim, bias=config.bias)
+
+        # Q and KV are each compressed into a latent
+        # note: Compressing Q doesn't reduce inference memory, but it cuts the Q projection's parameters and FLOPs, which helps training.
         self.down_proj_q = nn.Linear(config.n_embd, config.latent_q_dim, bias=config.bias)
-        
-        self.k_rotary = nn.Linear(config.n_embd, self.dh_rotary, bias=config.bias)
-        self.q_rotary = nn.Linear(config.latent_q_dim, config.n_head * self.dh_rotary, bias=config.bias)
+        self.down_proj_kv = nn.Linear(config.n_embd, config.latent_kv_dim, bias=config.bias)
 
-        self.up_k = nn.Linear(config.latent_kv_dim, config.n_head * self.dh_non_rotary, bias=config.bias)
-        self.up_q = nn.Linear(config.latent_q_dim, config.n_head * self.dh_non_rotary, bias=config.bias)
-        self.up_v = nn.Linear(config.latent_kv_dim, config.n_head * self.dh, bias=config.bias)
+        # content (non-RoPE) parts, expanded from the latents
+        self.up_q = nn.Linear(config.latent_q_dim, config.n_head * self.non_rope_dim, bias=config.bias)
+        self.up_k = nn.Linear(config.latent_kv_dim, config.n_head * self.non_rope_dim, bias=config.bias)
+        self.up_v = nn.Linear(config.latent_kv_dim, config.n_head * self.head_dim, bias=config.bias)
 
-        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
+        # decoupled RoPE parts: per-head rotary query, single rotary key shared by all heads
+        self.q_rotary = nn.Linear(config.latent_q_dim, config.n_head * self.rope_dim, bias=config.bias)
+        self.k_rotary = nn.Linear(config.n_embd, self.rope_dim, bias=config.bias)
+
         self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-
-    def forward(self, x, use_cache=False, **kwargs):
-        B, T, C = x.shape
-        n, dh, dh_nr = self.n_head, self.dh, self.dh_non_rotary
-
-        ckv = self.down_proj_kv(x) 
-        cq = self.down_proj_q(x) # separate q compression
-        KR = self.k_rotary(x) # shared rotary key (B, T, dh_rotary)
-
-        if use_cache:
-            if self.kv_cache is None:
-                self.kv_cache = ckv
-                self.kr_cache = KR
-            else:
-                self.kv_cache = torch.cat([self.kv_cache, ckv], dim=1)
-                self.kr_cache = torch.cat([self.kr_cache, KR], dim=1)
-                
-                if self.kv_cache.size(1) > self.block_size:
-                    self.kv_cache = self.kv_cache[:, -self.block_size:, :]
-                    self.kr_cache = self.kr_cache[:, -self.block_size:, :]
-
-            KC = self.up_k(self.kv_cache) # still reconstruct k
-            VC = self.up_v(self.kv_cache) 
-        else:
-            KC = self.up_k(ckv) 
-            VC = self.up_v(ckv) 
-
-        L = KC.size(1) 
-        if use_cache:
-            KR = self.kr_cache
-
-        # apply RoPE
-        cos_k = self.cos[:L].unsqueeze(0) # (1, L, dh_rotary/2)
-        sin_k = self.sin[:L].unsqueeze(0) # (1, L, dh_rotary/2)
-        KR = apply_rope(KR, cos_k, sin_k)
-        KR = KR.unsqueeze(2)   # (B, L, 1, dh_rotary)
-        KR = KR.expand(-1, -1, self.n_head, -1) # (B, L, n_head, dh_rotary)
-        KC = KC.view(B, L, n, dh_nr) 
-        K = torch.cat([KC, KR], dim=-1) # (B, L, n_head, dh)
-        K = K.transpose(1, 2) # (B, n_head, L, dh)
-
-        QC = self.up_q(cq)
-        QR = self.q_rotary(cq) # B, T, n * (dh - dh_nr)
-        QR = QR.view(B, T, n, self.dh_rotary)
-        if use_cache:
-            start = self.cache_pos 
-        else:
-            start = 0
-        end = start + T
-        cos_q = self.cos[start:end].unsqueeze(0).unsqueeze(2)  # (1, T, 1, dh_rotary/2)
-        sin_q = self.sin[start:end].unsqueeze(0).unsqueeze(2)  # (1, T, 1, dh_rotary/2)
-        QR = apply_rope(QR, cos_q, sin_q)
-        # QR = QR.view(B, T, n, dh - dh_nr)
-        QC = QC.view(B, T, n, dh_nr)
-        Q = torch.cat([QC, QR], dim=-1)
-        Q = Q.transpose(1, 2) # (B, n_head, T, dh)
-        
-        VC = VC.view(B, L, n,dh) # (B, L, n_head, dh)
-        VC = VC.transpose(1, 2) # (B, n_head, L, dh)
-
-        if use_cache:
-            self.cache_pos += T
-
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(dh) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-        # During training (or prefill), apply causal mask.
-        # During cached decoding (T == 1), no mask is needed.
-        if not (use_cache and T == 1):
-            wei = wei.masked_fill(
-                self.tril[:T, :L] == 0,
-                float("-inf")
-            )
-        wei = F.softmax(wei, dim=-1) # (B, H, T, T)
-        wei = self.dropout(wei)
-        out = wei @ VC # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
-
-        # (B, T, C)
-        out = out.transpose(1, 2).contiguous().view(B, T, C)
-
-        out = self.proj(out)
-        out = self.dropout(out)
-
-        return out
+        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.reset_cache()
 
     def reset_cache(self):
-        self.kv_cache = None
-        self.kr_cache = None
-        self.cache_pos = 0
+        self.kv_cache = None  # latent KV
+        self.kr_cache = None  # rotary key, cached after RoPE (shared across heads, so tiny)
+
+    def forward(self, x, cos, sin, use_cache=False, **kwargs):
+        B, T, C = x.shape
+
+        cq = self.down_proj_q(x)    # (B, T, latent_q_dim)
+        ckv = self.down_proj_kv(x)  # (B, T, latent_kv_dim)
+
+        # rotary parts; cos/sin are (B, T, rope_dim/2)
+        QR = apply_rope(self.q_rotary(cq).view(B, T, self.n_head, self.rope_dim), cos.unsqueeze(2), sin.unsqueeze(2))  # (B, T, n_head, rope_dim)
+        KR = apply_rope(self.k_rotary(x), cos, sin)          # (B, T, rope_dim)
+
+        if use_cache:
+            ckv, KR = self._update_cache(ckv, KR)
+        S = ckv.size(1)  # keys available
+
+        # expand the latent into per-head content K and full V (the "naive" part: redone every step)
+        KC = self.up_k(ckv).view(B, S, self.n_head, self.non_rope_dim)
+        V = self._split_heads(self.up_v(ckv))  # (B, n_head, S, head_dim)
+
+        # concat content and rotary parts: (B, n_head, ., head_dim)
+        QC = self.up_q(cq).view(B, T, self.n_head, self.non_rope_dim)
+        Q = torch.cat([QC, QR], dim=-1).transpose(1, 2)
+        K = torch.cat([KC, KR.unsqueeze(2).expand(-1, -1, self.n_head, -1)], dim=-1).transpose(1, 2)
+
+        # scaled dot-product attention: (B, n_head, T, S)
+        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.head_dim)
+        if T > 1:
+            scores = scores.masked_fill(self.tril[:T, :S] == 0, float('-inf'))
+        attn = self.dropout(F.softmax(scores, dim=-1))
+
+        # weighted sum of values, merge heads: (B, T, C)
+        out = (attn @ V).transpose(1, 2).contiguous().view(B, T, C)
+
+        # output projection mixes information across heads
+        return self.dropout(self.proj(out))
+
+    def _split_heads(self, x):
+        # (B, T, n_head * head_dim) -> (B, n_head, T, head_dim)
+        B, T, _ = x.shape
+        return x.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+
+    def _update_cache(self, ckv, KR):
+        if self.kv_cache is not None:
+            ckv = torch.cat([self.kv_cache, ckv], dim=1)
+            KR = torch.cat([self.kr_cache, KR], dim=1)
+        # The model was trained on block_size tokens of context, so keep only the last block_size.
+        self.kv_cache = ckv[:, -self.block_size:]
+        self.kr_cache = KR[:, -self.block_size:]
+        return self.kv_cache, self.kr_cache

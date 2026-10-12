@@ -2,94 +2,78 @@ import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .rope import apply_rope, precompute_freqs
+from .rope import apply_rope
+
 
 class MultiheadLatentAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-
         assert config.n_embd % config.n_head == 0
-
         self.n_head = config.n_head
         self.head_dim = config.n_embd // config.n_head
+        self.block_size = config.block_size
 
-        self.kv_cache = None
-        self.cache_pos = 0
-
-        cos, sin = precompute_freqs(self.head_dim, config.block_size)
-        self.register_buffer("cos", cos)
-        self.register_buffer("sin", sin)
-
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        # K/V are compressed into one shared latent, then expanded back to full per-head K/V
         self.down = nn.Linear(config.n_embd, config.latent_kv_dim, bias=config.bias)
         self.up_k = nn.Linear(config.latent_kv_dim, config.n_head * self.head_dim, bias=config.bias)
         self.up_v = nn.Linear(config.latent_kv_dim, config.n_head * self.head_dim, bias=config.bias)
-        self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
-
-        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
-
         self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, use_cache=False, **kwargs):
-        B, T, C = x.shape
-
-        Q = self.q_proj(x) # (B, T, C)
-        latent = self.down(x)
-
-        if use_cache:
-            if self.kv_cache is None:
-                self.kv_cache = latent
-            else:
-                self.kv_cache = torch.cat([self.kv_cache, latent], dim=1)
-            K = self.up_k(self.kv_cache) 
-            V = self.up_v(self.kv_cache)
-        else:
-            K = self.up_k(latent)
-            V = self.up_v(latent)
-        
-        L = K.size(1)
-
-        Q = Q.view(B, T, -1, self.head_dim) # (B, T, n_head, head_dim)
-        K = K.view(B, L, -1, self.head_dim) # (B, L, n_head, head_dim)
-        V = V.view(B, L, -1, self.head_dim) # (B, L, n_head, head_dim)
-
-        Q = Q.transpose(1, 2) # (B, n_head, T, head_dim)
-        K = K.transpose(1, 2) # (B, n_head, L, head_dim)
-        V = V.transpose(1, 2) # (B, n_head, L, head_dim)
-
-        # apply RoPE
-        if use_cache:
-            start = self.cache_pos
-        else:
-            start = 0
-        end = start + T
-        cos_q = self.cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        sin_q = self.sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        Q = apply_rope(Q, cos_q, sin_q)
-
-        cos_k = self.cos[:L].unsqueeze(0).unsqueeze(0)
-        sin_k = self.sin[:L].unsqueeze(0).unsqueeze(0)
-        K = apply_rope(K, cos_k, sin_k)
-
-        if use_cache:
-            self.cache_pos += T
-        
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(self.head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-        if not use_cache or T>1:
-            wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)
-        wei = F.softmax(wei, dim=-1) # (B, H, T, T)
-        wei = self.dropout(wei)
-        out = wei @ V # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
-
-        # (B, T, C)
-        out = out.transpose(1, 2).contiguous().view(B, T, C)
-
-        out = self.proj(out) # lets the model mix information across different heads
-        out = self.dropout(out)
-
-        return out
+        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.reset_cache()
 
     def reset_cache(self):
-        self.kv_cache = None
-        self.cache_pos = 0
+        self.latent_cache = None
+        self.cos_cache = None  # RoPE is applied to the up-projected K, so keep each cached token's cos/sin
+        self.sin_cache = None
+
+    def forward(self, x, cos, sin, use_cache=False, **kwargs):
+        B, T, C = x.shape
+
+        Q = self._split_heads(self.q_proj(x))  # (B, n_head, T, head_dim)
+        latent = self.down(x)  # (B, T, latent_kv_dim)
+
+        if use_cache:
+            latent, cos_k, sin_k = self._update_cache(latent, cos, sin)
+        else:
+            cos_k, sin_k = cos, sin
+
+        # expand the latent into per-head K/V: (B, n_head, S, head_dim), where S = keys available
+        K = self._split_heads(self.up_k(latent))
+        V = self._split_heads(self.up_v(latent))
+
+        # rotary embeddings; cos/sin are (B, T, head_dim/2), broadcast over heads
+        # (K is rotated after up-projection, so it needs the cos/sin of every cached position)
+        Q = apply_rope(Q, cos.unsqueeze(1), sin.unsqueeze(1))
+        K = apply_rope(K, cos_k.unsqueeze(1), sin_k.unsqueeze(1))
+
+        # scaled dot-product attention: (B, n_head, T, S)
+        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.head_dim)
+        if T > 1:
+            scores = scores.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf'))
+        attn = self.dropout(F.softmax(scores, dim=-1))
+
+        # weighted sum of values, merge heads: (B, T, C)
+        out = (attn @ V).transpose(1, 2).contiguous().view(B, T, C)
+
+        # output projection mixes information across heads
+        return self.dropout(self.proj(out))
+
+    def _split_heads(self, x):
+        # (B, T, n_head * head_dim) -> (B, n_head, T, head_dim)
+        B, T, _ = x.shape
+        return x.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+
+    def _update_cache(self, latent, cos, sin):
+        if self.latent_cache is not None:
+            latent = torch.cat([self.latent_cache, latent], dim=1)
+            cos = torch.cat([self.cos_cache, cos], dim=1)
+            sin = torch.cat([self.sin_cache, sin], dim=1)
+        # The model was trained on block_size tokens of context, so keep only the last block_size.
+        self.latent_cache = latent[:, -self.block_size:]
+        self.cos_cache = cos[:, -self.block_size:]
+        self.sin_cache = sin[:, -self.block_size:]
+        return self.latent_cache, self.cos_cache, self.sin_cache
