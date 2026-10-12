@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .rope import apply_rope, precompute_freqs
+from .rope import apply_rope
 
 class Head(nn.Module):
     """ one head of self-attention """
@@ -23,8 +23,6 @@ class Head(nn.Module):
 
         k = self.key(x)   # (B,T,head_dim)
         q = self.query(x) # (B,T,head_dim)
-        cos = cos[:T].unsqueeze(0) # (1, T, head_dim/2)
-        sin = sin[:T].unsqueeze(0) # (1, T, head_dim/2)
         q = apply_rope(q, cos, sin)
         k = apply_rope(k, cos, sin)
         # compute attention scores ("affinities")
@@ -43,14 +41,12 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.head_dim = config.n_embd // config.n_head
-        cos, sin = precompute_freqs(self.head_dim, config.block_size)
-        self.register_buffer("cos", cos)
-        self.register_buffer("sin", sin)
         self.heads = nn.ModuleList([Head(config) for _ in range(config.n_head)])
         self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, **kwargs):
-        out = torch.cat([h(x, self.cos, self.sin) for h in self.heads], dim=-1) # concatenate over the channel dimension
+    def forward(self, x, cos, sin, **kwargs):
+        # cos/sin: (B, T, head_dim/2), computed once per forward by GPT
+        out = torch.cat([h(x, cos, sin) for h in self.heads], dim=-1) # concatenate over the channel dimension
         out = self.dropout(self.proj(out)) # (B, T, num_heads * head_dim) -> (B, T, n_embd)
         return out

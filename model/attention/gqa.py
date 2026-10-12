@@ -2,100 +2,76 @@ import torch, math
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .rope import apply_rope, precompute_freqs
+from .rope import apply_rope
+
 
 class GroupedQueryAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-
         assert config.n_embd % config.n_head == 0
         assert config.n_head % config.n_kv_heads == 0
+        self.n_head = config.n_head
+        self.n_kv_heads = config.n_kv_heads
         self.head_dim = config.n_embd // config.n_head
-        self.repeat = config.n_head // config.n_kv_heads
+        self.repeat = config.n_head // config.n_kv_heads  # query heads per kv head
         self.block_size = config.block_size
-
-        cos, sin = precompute_freqs(self.head_dim, config.block_size)
-        self.register_buffer("cos", cos)
-        self.register_buffer("sin", sin)
-
-        self.k_cache = None
-        self.v_cache = None
-        self.cache_pos = 0
 
         self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.k_proj = nn.Linear(config.n_embd, config.n_kv_heads * self.head_dim, bias=config.bias)
         self.v_proj = nn.Linear(config.n_embd, config.n_kv_heads * self.head_dim, bias=config.bias)
-
-        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
-
         self.proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, use_cache=False, **kwargs):
+        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.reset_cache()
+
+    def reset_cache(self):
+        self.k_cache = None
+        self.v_cache = None
+
+    def forward(self, x, cos, sin, use_cache=False, **kwargs):
         B, T, C = x.shape
 
-        if use_cache:
-            start = self.cache_pos
-        else:
-            start = 0
-        end = start + T
+        # project and split into heads: Q is (B, n_head, T, head_dim), K/V are (B, n_kv_heads, T, head_dim)
+        Q = self._split_heads(self.q_proj(x), self.n_head)
+        K = self._split_heads(self.k_proj(x), self.n_kv_heads)
+        V = self._split_heads(self.v_proj(x), self.n_kv_heads)
 
-        Q = self.q_proj(x) # (B, T, C)
-        K = self.k_proj(x) # (B, T, n_kv_heads * head_dim)
-        V = self.v_proj(x) # (B, T, n_kv_heads * head_dim)
-
-        Q = Q.view(B, T, -1, self.head_dim) # (B, T, n_head, head_dim)
-        K = K.view(B, T, -1, self.head_dim) # (B, T, n_kv_heads, head_dim)
-        V = V.view(B, T, -1, self.head_dim) # (B, T, n_kv_heads, head_dim)
-
-        Q = Q.transpose(1, 2) # (B, n_head, T, head_dim)
-        K = K.transpose(1, 2) # (B, n_kv_heads, T, head_dim)
-        V = V.transpose(1, 2) # (B, n_kv_heads, T, head_dim)
-
-        # apply RoPE
-        cos = self.cos[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        sin = self.sin[start:end].unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
-        Q = apply_rope(Q, cos, sin)
-        K = apply_rope(K, cos, sin)
-
+        # rotary embeddings; cos/sin are (B, T, head_dim/2), broadcast over heads
+        cos, sin = cos.unsqueeze(1), sin.unsqueeze(1)
+        Q, K = apply_rope(Q, cos, sin), apply_rope(K, cos, sin)
 
         if use_cache:
-            if self.k_cache is None:
-                self.k_cache = K
-                self.v_cache = V
-            else:
-                self.k_cache = torch.cat([self.k_cache, K], dim=2)
-                self.v_cache = torch.cat([self.v_cache, V], dim=2)
-                if self.k_cache.size(2) > self.block_size:
-                    self.k_cache = self.k_cache[:, :, -self.block_size:, :]
-                    self.v_cache = self.v_cache[:, :, -self.block_size:, :]
-        if use_cache:
-            self.cache_pos += T
+            K, V = self._update_cache(K, V)
 
-        # attention
-        if use_cache:
-            K = self.k_cache
-            V = self.v_cache
+        # share each kv head across its group of query heads: (B, n_head, S, head_dim)
+        # (done after caching so the cache stays n_kv_heads wide)
         K = K.repeat_interleave(self.repeat, dim=1)
         V = V.repeat_interleave(self.repeat, dim=1)
 
-        wei = Q @ K.transpose(-2,-1) / math.sqrt(self.head_dim) # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-        if not use_cache or T>1:
-            wei = wei.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf')) # (B, H, T, T)
-        wei = F.softmax(wei, dim=-1) # (B, H, T, T)
-        wei = self.dropout(wei)
-        out = wei @ V # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
+        # scaled dot-product attention: (B, n_head, T, S), where S = keys available
+        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.head_dim)
+        if T > 1:  # a single new token can see everything, so it needs no mask
+            scores = scores.masked_fill(self.tril[:T, :K.size(2)] == 0, float('-inf'))
+        attn = self.dropout(F.softmax(scores, dim=-1))
 
-        # (B, T, C)
-        out = out.transpose(1, 2).contiguous().view(B, T, C)
+        # weighted sum of values, merge heads: (B, T, C)
+        out = (attn @ V).transpose(1, 2).contiguous().view(B, T, C)
 
-        out = self.proj(out) # lets the model mix information across different heads
-        out = self.dropout(out)
+        # output projection mixes information across heads
+        return self.dropout(self.proj(out))
 
-        return out
+    def _split_heads(self, x, n_heads):
+        # (B, T, n_heads * head_dim) -> (B, n_heads, T, head_dim)
+        B, T, _ = x.shape
+        return x.view(B, T, n_heads, self.head_dim).transpose(1, 2)
 
-    def reset_cache(self):
-        self.v_cache = None
-        self.k_cache = None
-        self.cache_pos = 0
+    def _update_cache(self, K, V):
+        if self.k_cache is not None:
+            K = torch.cat([self.k_cache, K], dim=2)
+            V = torch.cat([self.v_cache, V], dim=2)
+        # The model was trained on block_size tokens of context, so keep only the last block_size.
+        self.k_cache = K[:, :, -self.block_size:]
+        self.v_cache = V[:, :, -self.block_size:]
+        return self.k_cache, self.v_cache
