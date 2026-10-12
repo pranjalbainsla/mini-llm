@@ -16,11 +16,8 @@ class Block(nn.Module):
         self.ln1 = build_norm(config)
         self.ln2 = build_norm(config)
 
-    def forward(self, x, **kwargs):
-        if hasattr(self.attn, "reset_cache"):  # cached attention
-            attn_out = self.attn(self.ln1(x), **kwargs)
-        else:
-            attn_out = self.attn(self.ln1(x))
+    def forward(self, x, cos, sin, **kwargs):
+        attn_out = self.attn(self.ln1(x), cos=cos, sin=sin, **kwargs)
 
         x = x + attn_out
         

@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from .block import Block
 from .builder import build_norm
+from .attention.rope import RotaryEmbedding
 
 class GPT(nn.Module):
 
@@ -14,19 +15,25 @@ class GPT(nn.Module):
         self.block_size = config.block_size
 
         self.token_embedding_table = nn.Embedding(vocab_size, config.n_embd)
-        # Positional embeddings live inside the attention layer
+        # RoPE cos/sin are computed once per forward here and passed to every layer
+        head_dim = config.n_embd // config.n_head
+        rope_dim = int(head_dim * config.rotary_ratio) if config.attention.startswith("mla") else head_dim
+        self.rotary = RotaryEmbedding(rope_dim)
         self.blocks = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
         self.ln_f = build_norm(config)
         self.lm_head = nn.Linear(config.n_embd, vocab_size, bias=config.bias)
 
-    def forward(self, idx, targets=None, **kwargs):
+    def forward(self, idx, targets=None, position_ids=None, **kwargs):
         B, T = idx.shape
         x = self.token_embedding_table(idx) # (B,T,C)
+        if position_ids is None:
+            position_ids = torch.arange(T, device=idx.device).unsqueeze(0).expand(B, -1)
+        cos, sin = self.rotary(position_ids)
 
         total_aux = None
         routing_info = []
         for block in self.blocks:
-            x, topk_idx = block(x, **kwargs)
+            x, topk_idx = block(x, cos, sin, **kwargs)
             routing_info.append(topk_idx)
         # Load-balancing aux loss, training only: eval/val loss stays pure cross-entropy so
         # runs with use_aux_loss on/off are comparable.
@@ -54,31 +61,49 @@ class GPT(nn.Module):
             
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, use_cache=False, use_weight_absorption=False, temperature=1.0, top_k=None):
-        self.reset_cache()
+        """Autoregressively sample `max_new_tokens` tokens after the prompt `idx` (B, T).
 
-        # if the sequence context is growing too long we must crop it at block_size
-        idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
+        use_cache=True: prefill the prompt once, then feed only the newest token each step
+        (the attention layers keep K/V state). Positions must then be passed explicitly for RoPE.
+        use_cache=False: re-run the full (cropped to block_size) sequence every step.
+        Returns (B, T + max_new_tokens) token ids.
+        """
+        self.reset_cache()  # drop K/V state left over from any previous call
+        fwd_kwargs = dict(use_cache=use_cache, use_weight_absorption=use_weight_absorption)
 
-        logits, _, _ = self(idx_cond, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
+        # Prefill: process the whole prompt (cropped to the context window) in one pass.
+        idx_cond = idx[:, -self.block_size:]
+        logits, _, _ = self(idx_cond, **fwd_kwargs)
+        pos = idx_cond.size(1)  # absolute position of the next token (used only with the cache)
 
-        for _ in range(max_new_tokens):
-            logits = logits[:, -1, :] / temperature
-
+        for step in range(max_new_tokens):
+            logits = logits[:, -1, :] / temperature  # (B, vocab_size)
             if top_k is not None:
+                # keep the k largest logits, mask the rest out before softmax
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float("inf")
-
             probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
+            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+            # note: repeated torch.cat reallocates every step
+            # pre-allocating a (B, T+max_new_tokens) buffer
+            # and writing into it would avoid that.
             idx = torch.cat((idx, idx_next), dim=1)
-            # note: Avoid repeated torch.cat since every gen step reallocates memory. 
-            # Instead, pre-allocate a buffer of size (B, T+max_new_tokens) and write into it.
 
+            if step == max_new_tokens - 1:
+                break  # last token sampled, another forward pass would be wasted
+
+            # Build the next model input.
             if use_cache:
+                # cache already holds everything before idx_next, so feed just the new token
+                # and tell RoPE its true absolute position
                 idx_cond = idx_next
+                position_ids = torch.full((idx.size(0), 1), pos, device=idx.device)
+                pos += 1
             else:
-                idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
-            logits, _, _ = self(idx_cond, use_cache=use_cache, use_weight_absorption=use_weight_absorption)
+                # no cache: re-encode the whole sequence, positions default to 0..T-1 of the window
+                idx_cond = idx[:, -self.block_size:]
+                position_ids = None
+            logits, _, _ = self(idx_cond, position_ids=position_ids, **fwd_kwargs)
 
         return idx
 
