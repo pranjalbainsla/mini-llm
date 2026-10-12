@@ -59,6 +59,15 @@ class GPT(nn.Module):
           if hasattr(block.attn, "reset_cache"):
             block.attn.reset_cache()
             
+    def kv_cache_bytes(self):
+        """Total bytes currently held in all layers' KV caches (0 for layers without a cache)."""
+        total = 0
+        for block in self.blocks:
+            for name, t in vars(block.attn).items():
+                if name.endswith("_cache") and torch.is_tensor(t):
+                    total += t.numel() * t.element_size()
+        return total
+
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, use_cache=False, use_weight_absorption=False, temperature=1.0, top_k=None):
         """Autoregressively sample `max_new_tokens` tokens after the prompt `idx` (B, T).

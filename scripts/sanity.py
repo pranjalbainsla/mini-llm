@@ -9,6 +9,7 @@ Checks:
   2. every parameter receives a non-zero gradient
   3. causality (changing a future token must not change earlier logits)
   4. overfit ONE fixed batch of 32 examples -> loss should go to ~0
+  5. KV cache bytes per token (informational)
 """
 import math
 import os
@@ -106,6 +107,22 @@ for i in range(N_STEPS):
     model.update_expert_bias(routing_info)   # same call the trainer makes
     if i % PRINT_EVERY == 0 or i == N_STEPS - 1:
         print(f"    step {i:4d}  loss {loss.item():.4f}")
+
+# -----------------------------------------------------------------------------
+# 5) KV cache size: prefill one full-length sequence, then read what the layers hold
+model.eval()
+with torch.no_grad():
+    model.reset_cache()
+    model(X[:1], use_cache=True)
+    cache_bytes = model.kv_cache_bytes()
+    model.reset_cache()
+cached_tokens = min(T, config['block_size'])
+dtype_bytes = next(model.parameters()).element_size()
+print(f"\n[5] KV cache after prefilling {cached_tokens} tokens: {cache_bytes} bytes total, "
+      f"{cache_bytes / cached_tokens:.0f} bytes/token over {config['n_layer']} layers "
+      f"({cache_bytes / cached_tokens / config['n_layer']:.0f}/layer, {dtype_bytes}-byte params)")
+if cache_bytes == 0:
+    print("    (this attention variant has no KV cache)")
 
 final = loss.item()
 if final < PASS_LOSS:
