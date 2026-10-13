@@ -15,3 +15,4 @@ checkpoints/
 .DS_Store
 out/
 results/*.log
+docs/notebooks/moe_scaling_practice.ipynb
