@@ -10,6 +10,7 @@ Checks:
   3. causality (changing a future token must not change earlier logits)
   4. overfit ONE fixed batch of 32 examples -> loss should go to ~0
   5. KV cache bytes per token (informational)
+  6. cached vs uncached equivalence (cached prefill + one-token decode must match a full forward)
 """
 import math
 import os
@@ -123,6 +124,39 @@ print(f"\n[5] KV cache after prefilling {cached_tokens} tokens: {cache_bytes} by
       f"({cache_bytes / cached_tokens / config['n_layer']:.0f}/layer, {dtype_bytes}-byte params)")
 if cache_bytes == 0:
     print("    (this attention variant has no KV cache)")
+
+# -----------------------------------------------------------------------------
+# 6) cached vs uncached equivalence: the cached path must reproduce a plain full forward
+#    (a) prefill the whole sequence with use_cache=True, (b) prefill the first half, then feed
+#    the rest one token at a time with explicit position_ids, as generate() does.
+model.eval()
+variants = [False, True] if config['attention'] == 'mla_abs' else [False]   # weight absorption only exists in mla_abs
+TOL = 1e-4
+print(f"\n[6] cached vs uncached logits (tol {TOL:.0e})")
+with torch.no_grad():
+    x = X[:1]
+    T0 = T // 2
+    for absorb in variants:
+        kw = dict(use_weight_absorption=absorb) if config['attention'] == 'mla_abs' else {}
+        model.reset_cache()
+        ref, _, _ = model(x, **kw)                                   # uncached full forward
+
+        model.reset_cache()
+        pre, _, _ = model(x, use_cache=True, **kw)                   # (a) cached full prefill
+        diff_prefill = (pre - ref).abs().max().item()
+
+        model.reset_cache()
+        out = [model(x[:, :T0], use_cache=True, **kw)[0]]            # (b) prefill half...
+        for t in range(T0, T):                                       # ...then decode token by token
+            pos = torch.full((1, 1), t, device=device)
+            out.append(model(x[:, t:t + 1], position_ids=pos, use_cache=True, **kw)[0])
+        diff_decode = (torch.cat(out, dim=1) - ref).abs().max().item()
+        model.reset_cache()
+
+        ok = diff_prefill < TOL and diff_decode < TOL
+        tag = f" (absorption={absorb})" if len(variants) > 1 else ""
+        print(f"    full cached prefill{tag}: {diff_prefill:.2e}   prefill+decode{tag}: {diff_decode:.2e}  "
+              f"-> {'OK' if ok else 'MISMATCH (mask / cache position / RoPE offset bug?)'}")
 
 final = loss.item()
 if final < PASS_LOSS:
